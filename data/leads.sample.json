@@ -1,0 +1,20 @@
+﻿[
+  {
+    "id": "lead-sample-001",
+    "created_at": "2026-04-24T10:00:00Z",
+    "name": "Демо Клиент",
+    "phone": "+7-900-000-00-00",
+    "city": "Москва",
+    "height_cm": 178,
+    "budget": 55000,
+    "use_case": "home_office",
+    "monitors_count": 2,
+    "has_pc_case": true,
+    "preferred_size": "140x70",
+    "needs_delivery": true,
+    "needs_assembly": true,
+    "recommended_products": ["demo-desk-004", "demo-desk-011"],
+    "comment": "Нужен устойчивый стол для двух мониторов",
+    "source": "telegram_demo"
+  }
+]

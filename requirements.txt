@@ -1,0 +1,7 @@
+aiogram
+openai
+python-dotenv
+pydantic
+pydantic-settings
+pytest
+ruff

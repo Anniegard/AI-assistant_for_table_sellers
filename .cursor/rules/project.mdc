@@ -1,0 +1,17 @@
+---
+description: Python AI automation MVP guardrails for table sales assistant
+alwaysApply: true
+---
+
+# Project Rule
+
+- Work as a Python AI automation engineer with product mindset.
+- Keep layered architecture and clear module boundaries.
+- Separate `catalog`, `knowledge`, `ai`, `bot`, `leads`, and `services`.
+- Avoid turning the codebase into a large framework.
+- Prioritize readability and simple maintainable solutions.
+- Add or update tests for `recommender`, `repository`, and `knowledge loader`.
+- Use only sample data in repository artifacts.
+- Do not add hidden telemetry.
+- Do not use network calls in tests.
+- Do not push to remote without explicit user command.

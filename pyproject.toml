@@ -1,0 +1,18 @@
+[project]
+name = "table-sales-assistant"
+version = "0.1.0"
+description = "Demo AI sales assistant for height-adjustable desks"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
