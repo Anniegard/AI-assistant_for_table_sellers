@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.5] - 2026-04-24
+
+- Added optional SQLite backends for catalog and knowledge with env-driven runtime switching (`CATALOG_BACKEND`, `KNOWLEDGE_BACKEND`) and explicit fail-fast behavior when DB files are missing.
+- Added local StolStoya demo importer CLI with normalization/parsing utilities, SQLite schema/storage layer, import run reporting, and strict `.gitignore` rules to keep scraped data out of GitHub.
+- Updated recommendation/FAQ behavior and expanded test coverage with synthetic fixtures for importer parsing, SQLite repositories, category guards, and normalization helpers.
+
 ## [0.3.4] - 2026-04-24
 
 - Fixed desk recommendation boundaries: main подбор now excludes accessories by default, enforces strict budget matching, and only uses above-budget fallback when no in-budget desk exists.

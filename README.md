@@ -93,6 +93,37 @@ python -m table_sales_assistant.main
 - При передаче лида менеджеру бот сохраняет `known_params`, последние вопросы, рекомендованные товары и краткую сводку диалога.
 - Ограничения MVP: без Redis/PostgreSQL памяти, без CRM, рекомендации только из структурного каталога (LLM не источник характеристик товаров).
 
+## Local demo data import
+
+Локальный importer может расширить демо-базу из публичных страниц `https://stolstoya.ru/`.
+
+Пример запуска:
+
+```bash
+python scripts/ingest_stolstoya.py --db-path data/private/stolstoya_demo.sqlite --max-pages 50 --delay 1.0
+```
+
+Полезные опции:
+- `--dry-run` (только анализ, без записи в БД)
+- `--refresh-cache` (перезаписать локальный cache)
+- `--no-cache` (не использовать/не сохранять cache)
+- `--source-base-url` (по умолчанию `https://stolstoya.ru/`)
+
+Где создается БД:
+- локально в `data/private/stolstoya_demo.sqlite` (или путь из `--db-path`).
+- SQLite/raw/cache данные не должны коммититься в GitHub и исключены через `.gitignore`.
+
+Подключение SQLite как источника каталога/знаний:
+- `CATALOG_BACKEND=sqlite`
+- `CATALOG_DB_PATH=data/private/stolstoya_demo.sqlite`
+- `KNOWLEDGE_BACKEND=sqlite`
+- `KNOWLEDGE_DB_PATH=data/private/stolstoya_demo.sqlite`
+
+Важно:
+- это локальный демо-импорт из публичных страниц, не официальный бот StolStoya;
+- для коммерческого пилота нужно получить разрешение клиента или использовать предоставленный клиентом каталог;
+- не коммитите спаршенные БД, raw HTML, картинки и полные выгрузки.
+
 ## Документация
 
 - `docs/demo_script.md`

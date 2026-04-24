@@ -35,15 +35,24 @@ class ProductRecommender:
         "corner_desk",
     }
     _ACCESSORY_CATEGORIES = {"accessory", "accessories"}
+    _FRAME_CATEGORIES = {"frame", "base", "podstolye"}
+    _TABLETOP_CATEGORIES = {"tabletop", "stoleshnitsa"}
+    _UNKNOWN_CATEGORIES = {"unknown", "other"}
 
     @classmethod
     def _normalized_category(cls, category: str) -> str:
         lowered = (category or "").strip().lower()
         if lowered in cls._ACCESSORY_CATEGORIES:
             return "accessory"
+        if lowered in cls._FRAME_CATEGORIES:
+            return "frame"
+        if lowered in cls._TABLETOP_CATEGORIES:
+            return "tabletop"
         if lowered in cls._DESK_CATEGORIES:
             return "adjustable_desk"
-        return lowered or "other"
+        if lowered in cls._UNKNOWN_CATEGORIES:
+            return "unknown"
+        return lowered or "unknown"
 
     def _hard_filter(
         self,
@@ -55,7 +64,10 @@ class ProductRecommender:
         if not product.in_stock:
             return False
         normalized_category = self._normalized_category(product.category)
-        if not query.include_accessories and normalized_category != "adjustable_desk":
+        if query.include_accessories:
+            if normalized_category != "accessory":
+                return False
+        elif normalized_category != "adjustable_desk":
             return False
         budget_cap = (
             query.max_price_override
@@ -64,7 +76,7 @@ class ProductRecommender:
         )
         if budget_cap is not None:
             max_allowed = int(budget_cap * 1.2) if allow_above_budget else budget_cap
-            if product.price > max_allowed:
+            if product.price > 0 and product.price > max_allowed:
                 return False
         if query.user_height_cm is not None and not (
             product.recommended_user_height_min_cm
@@ -84,13 +96,20 @@ class ProductRecommender:
         tradeoffs: list[str] = []
 
         if query.budget is not None:
-            budget_delta = query.budget - product.price
-            if budget_delta >= 0:
-                score += max(0, min(15, budget_delta / 4000))
-                reasons.append("Укладывается в указанный бюджет")
+            if product.price <= 0:
+                score -= 4
+                tradeoffs.append("Цена не указана в демо-базе")
             else:
-                score -= 12
-                tradeoffs.append("Немного выше целевого бюджета")
+                budget_delta = query.budget - product.price
+                if budget_delta >= 0:
+                    score += max(0, min(15, budget_delta / 4000))
+                    reasons.append("Укладывается в указанный бюджет")
+                else:
+                    score -= 12
+                    tradeoffs.append("Немного выше целевого бюджета")
+        elif product.price <= 0:
+            score -= 4
+            tradeoffs.append("Цена не указана в демо-базе")
 
         if query.monitors_count is not None:
             expected_width = 140 if query.monitors_count >= 2 else 100
@@ -166,6 +185,9 @@ class ProductRecommender:
                 if self._hard_filter(product, query, allow_above_budget=True)
             ]
         results = [self._score(product, query) for product in filtered]
+        priced_results = [item for item in results if item.product.price > 0]
+        if priced_results:
+            results = priced_results
         results.sort(
             key=lambda item: (
                 -item.fit_score,

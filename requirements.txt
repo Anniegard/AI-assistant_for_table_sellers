@@ -5,3 +5,5 @@ pydantic
 pydantic-settings
 pytest
 ruff
+requests
+beautifulsoup4

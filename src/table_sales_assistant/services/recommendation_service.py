@@ -1,13 +1,18 @@
-﻿from table_sales_assistant.catalog.recommender import (
+﻿from typing import Protocol
+
+from table_sales_assistant.catalog.recommender import (
     ProductRecommender,
     RecommendationQuery,
     RecommendationResult,
 )
-from table_sales_assistant.catalog.repository import ProductRepository
+
+
+class CatalogRepository(Protocol):
+    def load_products(self): ...
 
 
 class RecommendationService:
-    def __init__(self, repository: ProductRepository, recommender: ProductRecommender) -> None:
+    def __init__(self, repository: CatalogRepository, recommender: ProductRecommender) -> None:
         self.repository = repository
         self.recommender = recommender
 

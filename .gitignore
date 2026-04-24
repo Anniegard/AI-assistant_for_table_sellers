@@ -22,3 +22,13 @@ data/dialogue_events.jsonl
 docs/commercial_positioning.md
 
 .env
+
+# Local imported demo artifacts
+data/*.sqlite
+data/*.db
+data/private/
+data/raw/
+data/cache/
+data/imported/
+exports/
+!data/.gitkeep

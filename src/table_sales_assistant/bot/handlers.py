@@ -40,6 +40,7 @@ from table_sales_assistant.bot.messages import (
 from table_sales_assistant.bot.states import FAQStates, LeadCollectionStates, RecommendationStates
 from table_sales_assistant.catalog.recommender import ProductRecommender, RecommendationQuery
 from table_sales_assistant.catalog.repository import ProductRepository
+from table_sales_assistant.catalog.sqlite_repository import SQLiteCatalogRepository
 from table_sales_assistant.config import get_settings
 from table_sales_assistant.leads.repository import JSONLeadRepository
 from table_sales_assistant.notifications.telegram_notifier import TelegramManagerNotifier
@@ -51,11 +52,33 @@ from table_sales_assistant.services.recommendation_service import Recommendation
 
 router = Router()
 settings = get_settings()
+
+
+def _build_catalog_repository():
+    if settings.catalog_backend == "sqlite":
+        if not settings.catalog_db_path.exists():
+            raise FileNotFoundError(
+                f"CATALOG_BACKEND=sqlite but DB does not exist: {settings.catalog_db_path}"
+            )
+        return SQLiteCatalogRepository(settings.catalog_db_path)
+    return ProductRepository(settings.products_path)
+
+
+def _build_faq_service() -> FAQService:
+    if settings.knowledge_backend == "sqlite":
+        if not settings.knowledge_db_path.exists():
+            raise FileNotFoundError(
+                f"KNOWLEDGE_BACKEND=sqlite but DB does not exist: {settings.knowledge_db_path}"
+            )
+        return FAQService(sqlite_db_path=settings.knowledge_db_path)
+    return FAQService(settings.knowledge_dir)
+
+
 recommendation_service = RecommendationService(
-    repository=ProductRepository(settings.products_path),
+    repository=_build_catalog_repository(),
     recommender=ProductRecommender(),
 )
-faq_service = FAQService(settings.knowledge_dir)
+faq_service = _build_faq_service()
 explanation_service = ExplanationService(OpenAIClient(settings.OPENAI_API_KEY))
 dialogue_service = DialogueService(
     recommendation_service=recommendation_service,
@@ -233,9 +256,14 @@ async def recommendation_use_case(message: Message, state: FSMContext) -> None:
     explanations = explanation_service.explain_products(products, query_context=raw_data)
     for idx, product in enumerate(products, start=1):
         explanation = explanations.get(product.id, "")
+        price_text = (
+            f"{product.price} руб"
+            if product.price > 0
+            else "цена не указана в демо-базе"
+        )
         await message.answer(
             f"{idx}. {product.name}\n"
-            f"Цена: {product.price} руб\n"
+            f"Цена: {price_text}\n"
             f"Моторов: {product.motors_count}\n"
             f"Размер: {product.tabletop_width_cm}x{product.tabletop_depth_cm} см\n"
             f"Ссылка: {product.product_url}\n"
