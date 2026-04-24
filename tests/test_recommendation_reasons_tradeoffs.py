@@ -9,7 +9,7 @@ def test_recommendation_contains_tradeoffs_and_best_for() -> None:
     results = ProductRecommender().recommend_scored(
         products,
         RecommendationQuery(
-            budget=40000,
+            budget=50000,
             user_height_cm=180,
             monitors_count=2,
             use_case="it_work",

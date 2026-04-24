@@ -14,6 +14,8 @@ class RecommendationQuery:
     include_accessories: bool = False
     strict_budget: bool = True
     max_price_override: int | None = None
+    min_price_override: int | None = None
+    exclude_product_ids: set[str] | None = None
 
 
 @dataclass(slots=True)
@@ -74,14 +76,26 @@ class ProductRecommender:
             if query.max_price_override is not None
             else query.budget
         )
+        if (
+            query.min_price_override is not None
+            and product.price > 0
+            and product.price < query.min_price_override
+        ):
+            return False
         if budget_cap is not None:
             max_allowed = int(budget_cap * 1.2) if allow_above_budget else budget_cap
             if product.price > 0 and product.price > max_allowed:
                 return False
-        if query.user_height_cm is not None and not (
-            product.recommended_user_height_min_cm
-            <= query.user_height_cm
-            <= product.recommended_user_height_max_cm
+        if query.exclude_product_ids and product.id in query.exclude_product_ids:
+            return False
+        if (
+            normalized_category == "adjustable_desk"
+            and query.user_height_cm is not None
+            and not (
+                product.recommended_user_height_min_cm
+                <= query.user_height_cm
+                <= product.recommended_user_height_max_cm
+            )
         ):
             return False
         if query.use_case and query.use_case not in product.use_cases:
@@ -174,16 +188,6 @@ class ProductRecommender:
             for product in products
             if self._hard_filter(product, query, allow_above_budget=False)
         ]
-        if (
-            query.strict_budget
-            and (query.max_price_override is not None or query.budget is not None)
-            and not filtered
-        ):
-            filtered = [
-                product
-                for product in products
-                if self._hard_filter(product, query, allow_above_budget=True)
-            ]
         results = [self._score(product, query) for product in filtered]
         priced_results = [item for item in results if item.product.price > 0]
         if priced_results:

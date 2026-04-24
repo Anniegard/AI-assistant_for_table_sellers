@@ -37,7 +37,17 @@ class IntentRouter:
             return DialogueIntent.LEAVE_LEAD
         if "менеджер" in lowered:
             return DialogueIntent.HANDOFF_MANAGER
-        if any(token in lowered for token in ("сравни", "сравнить")):
+        if any(
+            token in lowered
+            for token in (
+                "сравни",
+                "сравнить",
+                "сравни варианты",
+                "какой лучше",
+                "что выбрать",
+                "чем отличаются",
+            )
+        ):
             return DialogueIntent.COMPARE
         if any(token in lowered for token in ("дорого", "дешевле", "бюджетн")):
             return DialogueIntent.OBJECTION_PRICE

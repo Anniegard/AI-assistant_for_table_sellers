@@ -55,3 +55,19 @@ def test_budget_is_strict_when_matches_exist() -> None:
     assert result
     assert any(product.price <= 50000 for product in result)
     assert all(product.price <= 50000 for product in result)
+
+
+def test_strict_budget_returns_empty_when_all_above_budget() -> None:
+    products = ProductRepository(Path("data/products.sample.json")).load_products()
+    recommender = ProductRecommender()
+    result = recommender.recommend(
+        products,
+        RecommendationQuery(
+            budget=20000,
+            user_height_cm=190,
+            monitors_count=2,
+            use_case="home_office",
+            strict_budget=True,
+        ),
+    )
+    assert result == []

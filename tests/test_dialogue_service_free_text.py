@@ -141,6 +141,20 @@ def test_cheaper_request_does_not_repeat_same_products() -> None:
         assert "дешевле подходящих" in second.text.lower()
 
 
+def test_compare_request_uses_recommended_products() -> None:
+    service = _build_service()
+    context = DialogueContext(user_id=14, known_params=KnownClientParams())
+    first = service.handle("рост 190 бюджет 50000 для дома", context)
+    assert first.goal == AssistantGoal.RECOMMEND
+    first_ids = list(context.recommended_products)
+    assert first_ids
+
+    compare = service.handle("сравни варианты", context)
+    assert compare.goal == AssistantGoal.COMPARE
+    assert "если коротко" in compare.text.lower()
+    assert context.recommended_products == first_ids
+
+
 def test_accessory_can_be_recommended_only_for_accessory_intent() -> None:
     service = _build_service()
     context = DialogueContext(user_id=12, known_params=KnownClientParams())

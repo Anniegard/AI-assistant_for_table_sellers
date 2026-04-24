@@ -367,20 +367,36 @@ def _print_report(
 
     without_price = sum(1 for p in products if p.get("price_rub") is None)
     without_category = sum(1 for p in products if not p.get("category"))
+    unknown_products = sum(1 for p in products if (p.get("category") or "unknown") == "unknown")
     adjustable_no_height = sum(
         1
         for p in products
         if p.get("category") == "adjustable_desk"
         and (p.get("min_height_cm") is None or p.get("max_height_cm") is None)
     )
+    source_urls = [str(p.get("source_url") or "").strip() for p in products if p.get("source_url")]
+    duplicate_source_urls = sum(count - 1 for count in Counter(source_urls).values() if count > 1)
     adjustable_no_url = sum(
         1 for p in products if p.get("category") == "adjustable_desk" and not p.get("source_url")
+    )
+    suspicious_data = sum(
+        1
+        for p in products
+        if p.get("category") == "adjustable_desk"
+        and (
+            p.get("price_rub") is None
+            or p.get("min_height_cm") is None
+            or p.get("max_height_cm") is None
+        )
     )
     print("\nWarnings:")
     print(f"- products without price: {without_price}")
     print(f"- products without category: {without_category}")
+    print(f"- unknown products: {unknown_products}")
     print(f"- adjustable_desks without height range: {adjustable_no_height}")
     print(f"- adjustable_desks without source_url: {adjustable_no_url}")
+    print(f"- suspicious adjustable_desks: {suspicious_data}")
+    print(f"- duplicate source_url: {duplicate_source_urls}")
     if product_counts.get("unknown", 0) > max(3, int(len(products) * 0.3)):
         print("- warning: unknown category share is high; improve classification rules.")
 

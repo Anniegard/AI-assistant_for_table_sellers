@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.6] - 2026-04-24
+
+- Stabilized demo-MVP recommendation flow: fixed SQLite user-height mapping (technical range is no longer treated as user height), enforced desk-only selection boundaries, improved strict-budget/cheaper handling, and added context-based compare responses.
+- Improved FAQ/import tooling for demo safety: added stronger FAQ fallback answers, extended StolStoya import report warnings, introduced `scripts/inspect_demo_db.py`, and refreshed demo docs for SQLite import/inspection workflow and disclaimers.
+- Expanded regression coverage for height filtering, strict budget behavior, compare/intent/accessory flows, importer category/report checks, and inspect CLI output.
+
 ## [0.3.5] - 2026-04-24
 
 - Added optional SQLite backends for catalog and knowledge with env-driven runtime switching (`CATALOG_BACKEND`, `KNOWLEDGE_BACKEND`) and explicit fail-fast behavior when DB files are missing.

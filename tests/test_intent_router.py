@@ -28,3 +28,9 @@ def test_intent_router_prioritizes_faq_motors() -> None:
 def test_intent_router_detects_extended_lead_request() -> None:
     router = IntentRouter()
     assert router.route("Передай менеджеру, хочу заявку") == DialogueIntent.LEAVE_LEAD
+
+
+def test_intent_router_detects_compare_phrases() -> None:
+    router = IntentRouter()
+    assert router.route("какой лучше") == DialogueIntent.COMPARE
+    assert router.route("чем отличаются варианты") == DialogueIntent.COMPARE

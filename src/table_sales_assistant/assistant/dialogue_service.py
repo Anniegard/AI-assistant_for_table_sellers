@@ -211,8 +211,14 @@ class DialogueService:
             target_max_price = previous_min_price - 1
         query = self._build_recommendation_query(context)
         query.max_price_override = target_max_price
+        query.exclude_product_ids = set(context.recommended_products)
         ranked = self.recommendation_service.get_ranked_recommendations(query)
-        ranked = [item for item in ranked if item.product.price < previous_min_price]
+        ranked = [
+            item
+            for item in ranked
+            if item.product.price < previous_min_price
+            and item.product.id not in set(context.recommended_products)
+        ]
         if not ranked:
             return ResponseBuilder.with_cta(
                 (
@@ -243,6 +249,78 @@ class DialogueService:
             goal=AssistantGoal.RECOMMEND,
             intent=intent,
             cta="Сравнить варианты",
+        )
+
+    @staticmethod
+    def _format_price(value: int) -> str:
+        if value <= 0:
+            return "цена не указана в демо-базе"
+        return f"{value:,} ₽".replace(",", " ")
+
+    def _build_compare_response(
+        self, context: DialogueContext, intent: DialogueIntent
+    ) -> AssistantResponse:
+        if not context.recommended_products:
+            return ResponseBuilder.plain(
+                "Сначала подберу варианты под ваш рост и бюджет. "
+                "Напишите, например: рост 190, бюджет 50000.",
+                goal=AssistantGoal.ASK_MISSING_PARAM,
+                intent=intent,
+            )
+        recommended = self.recommendation_service.get_products_by_ids(context.recommended_products)
+        ranked = [
+            product
+            for product in recommended
+            if self.recommendation_service.recommender._normalized_category(product.category)
+            == "adjustable_desk"
+        ]
+        if not ranked:
+            return ResponseBuilder.plain(
+                "Сейчас в контексте нет последних рекомендованных столов. "
+                "Давайте сначала обновим подбор по росту и бюджету.",
+                goal=AssistantGoal.ASK_MISSING_PARAM,
+                intent=intent,
+            )
+
+        by_price = sorted(ranked, key=lambda item: (item.price <= 0, item.price or 10**9))
+        by_stability = sorted(
+            ranked, key=lambda item: (item.motors_count, item.lifting_capacity_kg), reverse=True
+        )
+        by_balance = sorted(
+            ranked, key=lambda item: (item.price <= 0, item.price, -item.motors_count)
+        )
+        budget_hint = (
+            f" и бюджета до {context.known_params.budget_max:,} ₽".replace(",", " ")
+            if context.known_params.budget_max
+            else ""
+        )
+        if context.known_params.height_cm:
+            height_hint = f"Для вашего роста {context.known_params.height_cm} см{budget_hint}"
+        else:
+            height_hint = "По текущим параметрам"
+        best_balance = by_balance[0]
+        lines = [
+            "Если коротко:",
+            f"1. Самый бюджетный: {by_price[0].name} ({self._format_price(by_price[0].price)}).",
+            (
+                "2. Самый устойчивый: "
+                f"{by_stability[0].name} ({by_stability[0].motors_count} мотора, "
+                f"до {by_stability[0].lifting_capacity_kg} кг)."
+            ),
+            (
+                "3. Лучший баланс: "
+                f"{best_balance.name} ({self._format_price(best_balance.price)}, "
+                f"диапазон {best_balance.min_height_cm}-{best_balance.max_height_cm} см, "
+                f"столешница {best_balance.tabletop_width_cm}x{best_balance.tabletop_depth_cm} см)."
+            ),
+            "",
+            f"{height_hint} я бы начал с {best_balance.name}.",
+        ]
+        return ResponseBuilder.with_cta(
+            "\n".join(lines),
+            goal=AssistantGoal.COMPARE,
+            intent=intent,
+            cta="Есть дешевле?",
         )
 
     def handle(self, text: str, context: DialogueContext) -> AssistantResponse:
@@ -348,6 +426,8 @@ class DialogueService:
                     cta="Позвать менеджера",
                 ),
             )
+        if intent == DialogueIntent.COMPARE:
+            return self._with_history(context, self._build_compare_response(context, intent))
         if intent == DialogueIntent.ACCESSORY_REQUEST:
             products = self.recommendation_service.repository.load_products()
             accessories = [
@@ -405,7 +485,6 @@ class DialogueService:
             DialogueIntent.RECOMMEND,
             DialogueIntent.UNKNOWN,
             DialogueIntent.CLARIFY_RECOMMENDATION,
-            DialogueIntent.COMPARE,
         ):
             missing = self._missing_params(context)
             if missing and intent in (DialogueIntent.RECOMMEND, DialogueIntent.UNKNOWN):
@@ -420,6 +499,47 @@ class DialogueService:
             query = self._build_recommendation_query(context)
             ranked = self.recommendation_service.get_ranked_recommendations(query)
             if not ranked:
+                over_budget_ranked: list = []
+                if context.known_params.budget_max:
+                    fallback_query = self._build_recommendation_query(context)
+                    fallback_query.strict_budget = False
+                    fallback_query.budget = None
+                    fallback_query.min_price_override = context.known_params.budget_max + 1
+                    over_budget_ranked = self.recommendation_service.get_ranked_recommendations(
+                        fallback_query
+                    )
+                    over_budget_ranked.sort(
+                        key=lambda item: (
+                            item.product.price <= 0,
+                            item.product.price if item.product.price > 0 else 10**9,
+                        )
+                    )
+                if over_budget_ranked:
+                    nearest = over_budget_ranked[:1]
+                    context.recommended_products = [item.product.id for item in nearest]
+                    explanations = self.explanation_service.explain_products(
+                        [item.product for item in nearest],
+                        query_context=asdict(query),
+                    )
+                    warning = (
+                        "В указанном бюджете вариантов не нашлось. "
+                        "Покажу ближайший вариант чуть выше бюджета с пометкой."
+                    )
+                    text = self._format_main_recommendation_text(
+                        context,
+                        nearest,
+                        explanations,
+                        cheaper_intro=warning,
+                    )
+                    return self._with_history(
+                        context,
+                        ResponseBuilder.with_cta(
+                            text,
+                            goal=AssistantGoal.RECOMMEND,
+                            intent=intent,
+                            cta="Сравнить варианты",
+                        ),
+                    )
                 return self._with_history(
                     context,
                     ResponseBuilder.with_cta(

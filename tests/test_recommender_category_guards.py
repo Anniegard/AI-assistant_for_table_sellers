@@ -46,3 +46,20 @@ def test_accessory_not_in_desk_recommendations() -> None:
     )
     assert result
     assert all(product.category == "adjustable_desk" for product in result)
+
+
+def test_recommendation_uses_only_adjustable_desks() -> None:
+    recommender = ProductRecommender()
+    products = [
+        _base_product("desk-1", "adjustable_desk"),
+        _base_product("acc-1", "accessory"),
+        _base_product("frame-1", "frame"),
+        _base_product("tabletop-1", "tabletop"),
+        _base_product("unknown-1", "unknown"),
+    ]
+    result = recommender.recommend(
+        products,
+        RecommendationQuery(budget=70000, user_height_cm=190, monitors_count=2),
+    )
+    assert result
+    assert all(product.category == "adjustable_desk" for product in result)

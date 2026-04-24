@@ -4,6 +4,13 @@ from table_sales_assistant.catalog.models import Product
 from table_sales_assistant.storage.sqlite import connect_sqlite
 
 
+def ergonomic_user_height_fallback(category: str) -> tuple[int, int]:
+    normalized = (category or "").strip().lower()
+    if normalized == "adjustable_desk":
+        return (140, 210)
+    return (0, 999)
+
+
 class SQLiteCatalogRepository:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
@@ -22,6 +29,12 @@ class SQLiteCatalogRepository:
                     price_rub,
                     min_height_cm,
                     max_height_cm,
+                    json_extract(
+                        raw_payload_json, '$.recommended_user_height_min_cm'
+                    ) AS recommended_user_height_min_cm,
+                    json_extract(
+                        raw_payload_json, '$.recommended_user_height_max_cm'
+                    ) AS recommended_user_height_max_cm,
                     width_cm,
                     depth_cm,
                     motors_count,
@@ -36,6 +49,11 @@ class SQLiteCatalogRepository:
 
         products: list[Product] = []
         for row in rows:
+            explicit_min = row["recommended_user_height_min_cm"]
+            explicit_max = row["recommended_user_height_max_cm"]
+            fallback_min, fallback_max = ergonomic_user_height_fallback(
+                row["category"] or "unknown"
+            )
             products.append(
                 Product(
                     id=row["id"],
@@ -52,8 +70,12 @@ class SQLiteCatalogRepository:
                     material=row["tabletop_material"] or "unknown",
                     colors=[],
                     use_cases=[],
-                    recommended_user_height_min_cm=(row["min_height_cm"] or 0),
-                    recommended_user_height_max_cm=(row["max_height_cm"] or 999),
+                    recommended_user_height_min_cm=(
+                        int(explicit_min) if explicit_min is not None else fallback_min
+                    ),
+                    recommended_user_height_max_cm=(
+                        int(explicit_max) if explicit_max is not None else fallback_max
+                    ),
                     product_url=row["source_url"] or "",
                     in_stock=(row["availability"] or "").lower() != "out_of_stock",
                     short_description=row["description_short"] or "",

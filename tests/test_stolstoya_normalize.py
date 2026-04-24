@@ -47,3 +47,51 @@ def test_classify_category_not_chair_without_chair_path() -> None:
         text="Подходит для офиса, не кресло.",
     )
     assert category == "adjustable_desk"
+
+
+def test_importer_category_detection() -> None:
+    assert (
+        classify_category(
+            url="https://stolstoya.ru/catalog/reguliruemye-stoly/model-x",
+            title="Стол с регулировкой",
+            breadcrumbs="Каталог / Столы",
+            text="Регулируемый стол для офиса",
+        )
+        == "adjustable_desk"
+    )
+    assert (
+        classify_category(
+            url="https://stolstoya.ru/catalog/ramy/frame-x",
+            title="Рама frame",
+            breadcrumbs="Каталог / Рамы",
+            text="Подстолье",
+        )
+        == "frame"
+    )
+    assert (
+        classify_category(
+            url="https://stolstoya.ru/catalog/tabletop/oak",
+            title="Столешница",
+            breadcrumbs="Каталог / Столешницы",
+            text="Столешница из ЛДСП",
+        )
+        == "tabletop"
+    )
+    assert (
+        classify_category(
+            url="https://stolstoya.ru/catalog/accessories/cable",
+            title="Кабельный лоток",
+            breadcrumbs="Каталог / Аксессуары",
+            text="аксессуар",
+        )
+        == "accessory"
+    )
+    assert (
+        classify_category(
+            url="https://stolstoya.ru/unknown/page",
+            title="Страница",
+            breadcrumbs="Инфо",
+            text="информация без каталога",
+        )
+        == "unknown"
+    )
