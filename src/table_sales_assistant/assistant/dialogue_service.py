@@ -62,6 +62,52 @@ class DialogueService:
         return missing
 
     @staticmethod
+    def _build_missing_params_prompt(missing: list[str]) -> str:
+        missing_set = set(missing)
+        if missing_set == {"бюджет"}:
+            return "Укажите бюджет в рублях, например: 50000."
+        if missing_set == {"рост"}:
+            return "Укажите ваш рост в сантиметрах, например: 190."
+        return "Напишите рост и бюджет, например: рост 190, бюджет 50000."
+
+    @staticmethod
+    def _is_motor_faq(text: str) -> bool:
+        lowered = text.lower()
+        return any(
+            token in lowered
+            for token in (
+                "два мотора",
+                "2 мотора",
+                "один мотор",
+                "1 мотор",
+                "чем два мотора",
+                "зачем два мотора",
+                "мотор лучше",
+                "разница моторов",
+            )
+        )
+
+    def _motor_faq_answer(self, context: DialogueContext) -> str:
+        details: list[str] = []
+        if context.known_params.height_cm:
+            details.append(f"рост {context.known_params.height_cm} см")
+        if context.known_params.budget_max:
+            details.append(f"бюджет до {context.known_params.budget_max:,} руб".replace(",", " "))
+        if context.known_params.use_case == "home_office":
+            details.append("сценарий: домашнее рабочее место")
+        elif context.known_params.use_case:
+            details.append(f"сценарий: {context.known_params.use_case}")
+        intro = f"С учетом ваших параметров ({', '.join(details)}), " if details else ""
+        return (
+            f"{intro}два мотора обычно дают более стабильный подъем, выше "
+            "грузоподъемность и лучше подходят для тяжелой рабочей зоны: "
+            "два монитора, системный блок, кронштейны, акустика. "
+            "Один мотор может быть нормальным вариантом для легкого домашнего "
+            "рабочего места, но если рабочая зона тяжелее и нужна устойчивость "
+            "на большой высоте, я бы в первую очередь смотрел модели с двумя моторами."
+        )
+
+    @staticmethod
     def _with_history(context: DialogueContext, response: AssistantResponse) -> AssistantResponse:
         context.add_assistant_message(response.text)
         return response
@@ -88,16 +134,50 @@ class DialogueService:
                 ),
             )
         if intent in (DialogueIntent.LEAVE_LEAD, DialogueIntent.HANDOFF_MANAGER):
+            known: list[str] = []
+            if context.known_params.height_cm:
+                known.append(f"рост {context.known_params.height_cm} см")
+            if context.known_params.budget_max:
+                known.append(
+                    f"бюджет до {context.known_params.budget_max:,} руб".replace(",", " ")
+                )
+            if context.known_params.use_case == "home_office":
+                known.append("сценарий: домашнее рабочее место")
+            elif context.known_params.use_case:
+                known.append(f"сценарий: {context.known_params.use_case}")
+            if context.recommended_products:
+                lead_text = "Отлично, помогу оставить заявку менеджеру. Как вас зовут?"
+            elif known:
+                lead_text = (
+                    "Хорошо, помогу оставить заявку менеджеру. "
+                    f"Я уже вижу параметры: {', '.join(known)}. Как вас зовут?"
+                )
+            else:
+                lead_text = "Отлично, помогу оставить заявку менеджеру. Как вас зовут?"
             return self._with_history(
                 context,
                 AssistantResponse(
-                    text="Отлично, помогу оставить заявку менеджеру. Как вас зовут?",
+                    text=lead_text,
                     goal=AssistantGoal.COLLECT_LEAD,
                     intent=intent,
                     start_lead_flow=True,
                 ),
             )
         if intent in (DialogueIntent.FAQ, DialogueIntent.DELIVERY_WARRANTY_MATERIALS):
+            if self._is_motor_faq(text):
+                return self._with_history(
+                    context,
+                    ResponseBuilder.with_cta(
+                        (
+                            f"{self._motor_faq_answer(context)}\n\n"
+                            "Если хотите, сравню подходящие варианты по устойчивости, "
+                            "нагрузке и цене."
+                        ),
+                        goal=AssistantGoal.ANSWER_QUESTION,
+                        intent=DialogueIntent.FAQ,
+                        cta="Сравнить варианты",
+                    ),
+                )
             answer = self.faq_service.answer(text)
             if answer:
                 known = []
@@ -141,7 +221,7 @@ class DialogueService:
                 ResponseBuilder.with_cta(
                     (
                         "Я помогу выбрать регулируемый стол под вашу задачу. "
-                        "Напишите параметры: рост, бюджет и количество мониторов."
+                        "Напишите параметры: рост и бюджет (мониторы - по желанию)."
                     ),
                     goal=AssistantGoal.ASK_MISSING_PARAM,
                     intent=intent,
@@ -161,7 +241,7 @@ class DialogueService:
                 return self._with_history(
                     context,
                     ResponseBuilder.plain(
-                        f"Чтобы подобрать стол точнее, уточните: {', '.join(missing)}.",
+                        self._build_missing_params_prompt(missing),
                         goal=AssistantGoal.ASK_MISSING_PARAM,
                         intent=intent,
                     ),
@@ -194,11 +274,25 @@ class DialogueService:
                 products,
                 query_context=asdict(query),
             )
-            lines = ["Подобрал 2-3 варианта: бюджетный, сбалансированный и с запасом."]
+            lines = []
+            intro_parts: list[str] = []
+            if context.known_params.height_cm:
+                intro_parts.append(f"рост {context.known_params.height_cm} см")
+            if context.known_params.budget_max:
+                intro_parts.append(
+                    f"бюджет до {context.known_params.budget_max:,} рублей".replace(",", " ")
+                )
+            if context.known_params.use_case == "home_office":
+                intro_parts.append("сценарий: домашнее рабочее место")
+            elif context.known_params.use_case:
+                intro_parts.append(f"сценарий: {context.known_params.use_case}")
+            if intro_parts:
+                lines.append(f"Понял: {', '.join(intro_parts)}.")
+            lines.append("Вот несколько вариантов из каталога:")
             if context.known_params.monitors_count is None:
                 lines.append(
-                    "Количество мониторов вы не указали, поэтому подбор предварительный: "
-                    "ориентируюсь на универсальный сценарий для 1-2 мониторов."
+                    "Количество мониторов вы не указали, поэтому сделаю предварительный "
+                    "подбор для 1-2 мониторов."
                 )
             for item in ranked:
                 lines.append(
@@ -208,7 +302,10 @@ class DialogueService:
                 )
             first_id = ranked[0].product.id
             lines.append(f"\nПочему подходит: {explanations.get(first_id, '')}")
-            lines.append("Хотите, сравню варианты по устойчивости, цене и нагрузке?")
+            lines.append(
+                "Могу сравнить эти варианты, подобрать дешевле, ответить на вопросы "
+                "или помочь оставить заявку менеджеру."
+            )
             return self._with_history(
                 context,
                 ResponseBuilder.with_cta(

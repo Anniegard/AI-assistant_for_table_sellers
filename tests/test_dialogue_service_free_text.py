@@ -3,6 +3,7 @@ from pathlib import Path
 from table_sales_assistant.ai.client import OpenAIClient
 from table_sales_assistant.assistant.dialogue_service import DialogueService
 from table_sales_assistant.assistant.models import AssistantGoal, DialogueContext, KnownClientParams
+from table_sales_assistant.assistant.parsing import extract_budget_range
 from table_sales_assistant.catalog.recommender import ProductRecommender
 from table_sales_assistant.catalog.repository import ProductRepository
 from table_sales_assistant.services.explanation_service import ExplanationService
@@ -34,6 +35,15 @@ def test_dialogue_service_extracts_params_and_recommends() -> None:
     assert context.recommended_products
 
 
+def test_parse_budget_from_compact_free_text() -> None:
+    service = _build_service()
+    context = DialogueContext(user_id=10, known_params=KnownClientParams())
+    service.handle("рост 190 бюджет 50000 для дома", context)
+    assert context.known_params.height_cm == 190
+    assert context.known_params.budget_max == 50000
+    assert context.known_params.use_case == "home_office"
+
+
 def test_dialogue_service_starts_lead_flow_on_request() -> None:
     service = _build_service()
     context = DialogueContext(user_id=2, known_params=KnownClientParams())
@@ -57,7 +67,49 @@ def test_dialogue_service_does_not_block_without_monitors() -> None:
     context = DialogueContext(user_id=4, known_params=KnownClientParams())
     response = service.handle("рост 190 бюджет 50000 для дома", context)
     assert response.goal == AssistantGoal.RECOMMEND
+    assert "уточните бюджет" not in response.text.lower()
     assert "количество мониторов вы не указали" in response.text.lower()
+
+
+def test_faq_question_has_priority_over_missing_params() -> None:
+    service = _build_service()
+    context = DialogueContext(
+        user_id=6,
+        known_params=KnownClientParams(height_cm=190, budget_max=50000, use_case="home_office"),
+    )
+    response = service.handle("А чем два мотора лучше?", context)
+    assert response.goal == AssistantGoal.ANSWER_QUESTION
+    assert "два мотора" in response.text.lower()
+    assert "укажите бюджет" not in response.text.lower()
+
+
+def test_budget_parsing_variants() -> None:
+    variants = [
+        "до 50 000",
+        "50к",
+        "50 тыс",
+        "50000 рублей",
+        "бюджет 50000",
+    ]
+    for text in variants:
+        budget_min, budget_max = extract_budget_range(text)
+        assert budget_min is None
+        assert budget_max == 50000
+
+
+def test_lead_request_uses_existing_context() -> None:
+    service = _build_service()
+    context = DialogueContext(user_id=7, known_params=KnownClientParams())
+    first_response = service.handle("рост 190 бюджет 50000 для дома", context)
+    assert first_response.goal == AssistantGoal.RECOMMEND
+    assert context.recommended_products
+
+    lead_response = service.handle("Оставь заявку", context)
+    assert lead_response.start_lead_flow is True
+    assert "как вас зовут" in lead_response.text.lower()
+    assert context.known_params.height_cm == 190
+    assert context.known_params.budget_max == 50000
+    assert context.recommended_products
 
 
 def test_dialogue_context_stores_recent_user_and_assistant_messages() -> None:

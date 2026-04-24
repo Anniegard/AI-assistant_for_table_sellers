@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.3] - 2026-04-24
+
+- Fixed free-text budget parsing for compact and conversational formats (`50к`, `50 тыс`, `до 50 000`, `50000 рублей`) including combined parameter messages.
+- Reworked intent priority to route FAQ questions (especially motor-related) before repeated missing-parameter prompts, while keeping FSM button flows intact.
+- Improved dialogue recommendation/lead behavior: smart missing-param prompts, monitor fallback as non-blocking with explicit preliminary note, and context-aware motor FAQ + lead handoff context reuse.
+
 ## [0.3.2] - 2026-04-24
 
 - Added session memory for free-text dialogue: recent message history, context summary, and parameter accumulation across Telegram messages.

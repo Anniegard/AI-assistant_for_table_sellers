@@ -18,3 +18,13 @@ def test_intent_router_detects_faq_delivery() -> None:
         router.route("Как с доставкой и гарантией?")
         == DialogueIntent.DELIVERY_WARRANTY_MATERIALS
     )
+
+
+def test_intent_router_prioritizes_faq_motors() -> None:
+    router = IntentRouter()
+    assert router.route("А чем два мотора лучше?") == DialogueIntent.FAQ
+
+
+def test_intent_router_detects_extended_lead_request() -> None:
+    router = IntentRouter()
+    assert router.route("Передай менеджеру, хочу заявку") == DialogueIntent.LEAVE_LEAD
