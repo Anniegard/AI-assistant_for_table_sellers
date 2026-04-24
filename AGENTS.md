@@ -1,9 +1,11 @@
 # AGENTS Guidelines
 
 ## Purpose
+
 This project demonstrates an AI sales assistant MVP for table sellers. Agents must optimize for clear business value and maintainable code.
 
 ## Rules for AI agents
+
 - Always understand the business scenario before coding.
 - Keep and extend the existing project structure, do not break layer boundaries.
 - Read `README.md` and relevant `docs/*.md` before major changes.

@@ -1,71 +1,72 @@
 # AI-assistant for table sellers
 
-Демо-проект AI sales assistant для компаний, которые продают регулируемые столы, эргономичную мебель и аксессуары для рабочих мест.
+Демо Telegram-бот AI sales assistant для продавцов регулируемых по высоте столов.
 
-## Бизнес-проблема
-- Клиентам сложно выбрать подходящий стол по параметрам.
-- Менеджеры тратят время на повторяющиеся консультации.
-- Лиды часто приходят неполными и требуют дополнительного уточнения.
+## Business value
+- Помогает клиенту выбрать модель по параметрам без долгой переписки.
+- Закрывает повторяющиеся FAQ-вопросы в первом касании.
+- Сохраняет структурированный лид и передает его менеджеру.
+- Показывает бизнесу proof of value без интеграции в сайт и CRM.
 
-## Что делает MVP
-- Ведет пользователя через базовый сценарий подбора стола.
-- Отвечает на частые вопросы из базы знаний.
-- Объясняет различия между моделями в понятном виде.
-- Собирает заявку и сохраняет лид локально.
-- Готовит интерфейс для будущей отправки менеджеру в Telegram и экспорта в Google Sheets.
+## Что показывает демо
+1. Подбор стола по бюджету, росту, мониторам, сценарию и моторам.
+2. FAQ-ответы на базе markdown knowledge.
+3. AI-объяснение уже выбранных deterministic рекомендаций.
+4. Сбор заявки и локальное сохранение в JSON.
+5. Отправку заявки менеджеру в Telegram при заданном chat id.
 
-## Основные сценарии
-1. Подбор стола по бюджету, росту, сценариям использования и предпочтениям.
-2. FAQ-консультация по моторам, размерам, материалам, доставке и сборке.
-3. Сбор заявки для менеджера с ключевыми параметрами клиента.
+## Ограничения демо
+- Все товары и лиды в репозитории: sample data.
+- Нет обещаний по реальным срокам, остаткам и финальной цене.
+- Без `OPENAI_API_KEY` проект работает в offline/demo режиме.
 
 ## Архитектура
-- `bot`: Telegram слой и диалоговые состояния.
-- `catalog`: структурные данные товаров и deterministic filtering.
-- `knowledge`: загрузка и поиск по markdown-базе знаний.
-- `ai`: слой промптов и клиент OpenAI с offline-safe режимом.
-- `leads`: сохранение заявок в JSON с возможностью будущих адаптеров.
-- `services`: объединение рекомендаций и объяснений.
+- `bot`: Telegram handlers и FSM-состояния.
+- `catalog`: структура товаров и deterministic filtering.
+- `knowledge`: загрузка markdown и keyword search.
+- `ai`: клиент OpenAI и промпты объяснений.
+- `services`: orchestration рекомендаций, FAQ, лидов.
+- `leads`: модель и JSON repository.
+- `notifications`: форматирование лида и отправка менеджеру.
 
-Принцип: товары фильтруются по точным параметрам. FAQ и статьи обрабатываются отдельно через knowledge search. На следующем этапе можно добавить RAG, но не заменять им структурный каталог.
-
-## Стек
-- Python 3.11+
-- aiogram 3.x
-- OpenAI API
-- JSON (MVP) для каталога и лидов
-- Markdown для базы знаний
-- pytest
-- ruff
-- pydantic-settings
-
-## Быстрый локальный запуск
+## Быстрый запуск
 ```bash
 python -m venv .venv
-source .venv/bin/activate
+.venv\Scripts\activate
 pip install -r requirements.txt
 pytest
 ruff check .
+python -m table_sales_assistant.main
 ```
 
-## Настройка окружения
+## Настройка `.env`
 1. Скопируйте `.env.example` в `.env`.
-2. Заполните только необходимые значения.
-3. Не добавляйте `.env` в git.
+2. Заполните `TELEGRAM_BOT_TOKEN`.
+3. Опционально заполните `OPENAI_API_KEY` и `MANAGER_TELEGRAM_CHAT_ID`.
 
 Ключевые переменные:
 - `TELEGRAM_BOT_TOKEN`
-- `OPENAI_API_KEY`
-- `MANAGER_TELEGRAM_CHAT_ID`
+- `OPENAI_API_KEY` (optional)
+- `MANAGER_TELEGRAM_CHAT_ID` (optional)
 - `PRODUCTS_PATH`
 - `KNOWLEDGE_DIR`
 - `LEADS_PATH`
 - `LOG_LEVEL`
 
-## Как устроены товары и база знаний
-- Товары: `data/products.sample.json` с формальными полями для фильтрации.
-- FAQ и статьи: `data/knowledge/*.md` для тематического поиска по ключевым словам.
-- Лиды: `data/leads.sample.json` как пример структуры, runtime-сохранение в `LEADS_PATH`.
+## Demo journey
+- Запустить бота.
+- Пройти `/start`.
+- Выбрать подбор стола и получить 2-3 рекомендации.
+- Задать FAQ-вопрос.
+- Оставить заявку и проверить JSON файл лидов.
+- Проверить отправку менеджеру при заданном `MANAGER_TELEGRAM_CHAT_ID`.
+
+## Документация
+- `docs/demo_script.md`
+- `docs/demo_checklist.md`
+- `docs/stage_5_packaging.md`
+- `docs/commercial_positioning.md`
+- `docs/client_pitch.md`
 
 ## Roadmap
 - Stage 1: Project setup
@@ -73,11 +74,3 @@ ruff check .
 - Stage 3: AI recommendation flow
 - Stage 4: Lead collection and manager notification
 - Stage 5: Demo packaging
-- Stage 6: Client adaptation
-- Stage 7: Website widget and commercial pilot
-
-## Позиционирование как AI automation кейса
-Этот проект демонстрирует, как AI sales assistant помогает бизнесу автоматизировать консультации, ускорять путь клиента к заявке и стандартизировать сбор данных для отдела продаж.
-
-## Будущая демо-страница
-Публичная демо-страница будет размещена на [anniland.ru](https://anniland.ru).

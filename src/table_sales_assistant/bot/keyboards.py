@@ -7,6 +7,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text='Подобрать стол')],
             [KeyboardButton(text='Частые вопросы')],
             [KeyboardButton(text='Оставить заявку')],
+            [KeyboardButton(text='Демо-режим')],
         ],
         resize_keyboard=True,
     )
