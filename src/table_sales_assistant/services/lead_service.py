@@ -40,7 +40,13 @@ class LeadService:
                 if data.get("needs_assembly") is not None
                 else None
             ),
+            known_params=dict(data.get("known_params", {})),
             recommended_products=list(data.get("recommended_products", [])),
+            recent_dialogue_summary=(
+                str(data["recent_dialogue_summary"])
+                if data.get("recent_dialogue_summary")
+                else None
+            ),
             recent_questions=list(data.get("recent_questions", [])),
             selected_product_id=(
                 str(data["selected_product_id"]) if data.get("selected_product_id") else None

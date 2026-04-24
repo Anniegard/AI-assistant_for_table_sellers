@@ -15,7 +15,9 @@ class Lead(BaseModel):
     preferred_size: str | None = None
     needs_delivery: bool | None = None
     needs_assembly: bool | None = None
+    known_params: dict[str, object] = Field(default_factory=dict)
     recommended_products: list[str] = Field(default_factory=list)
+    recent_dialogue_summary: str | None = None
     recent_questions: list[str] = Field(default_factory=list)
     selected_product_id: str | None = None
     assistant_comment: str | None = None

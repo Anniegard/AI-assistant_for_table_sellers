@@ -20,12 +20,16 @@ def test_build_lead_contains_required_fields() -> None:
             "preferred_size": "120x70",
             "needs_delivery": True,
             "needs_assembly": True,
+            "known_params": {"height_cm": 170, "budget_max": 65000},
             "recommended_products": ["demo-desk-003"],
+            "recent_dialogue_summary": "Клиенту показали 2 варианта для дома.",
             "comment": "-",
         }
     )
     assert lead.name == "Анна"
     assert lead.source == "telegram_demo"
+    assert lead.known_params["budget_max"] == 65000
+    assert lead.recent_dialogue_summary
 
 
 def test_build_lead_keeps_recommended_products_after_recommendation() -> None:

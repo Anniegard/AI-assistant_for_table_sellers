@@ -14,7 +14,9 @@ def test_manager_handoff_summary_contains_extended_context() -> None:
             "monitors_count": 2,
             "has_pc_case": True,
             "needs_assembly": True,
+            "known_params": {"height_cm": 182, "budget_max": 80000, "use_case": "it_work"},
             "recommended_products": ["demo-desk-004", "demo-desk-011"],
+            "recent_dialogue_summary": "Клиенту показаны 2 модели, интерес к устойчивости.",
             "recent_questions": ["Почему два мотора?", "Есть дешевле?"],
             "selected_product_id": "demo-desk-004",
             "assistant_comment": "Важно уточнить фактическую нагрузку и глубину столешницы.",
@@ -25,3 +27,4 @@ def test_manager_handoff_summary_contains_extended_context() -> None:
     assert "Вопросы клиента:" in formatted
     assert "Выбранный вариант: demo-desk-004" in formatted
     assert "Комментарий ассистента:" in formatted
+    assert "Сводка диалога:" in formatted

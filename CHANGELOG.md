@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.2] - 2026-04-24
+
+- Added session memory for free-text dialogue: recent message history, context summary, and parameter accumulation across Telegram messages.
+- Improved dialogue behavior for incomplete inputs by making budget/height required, using a monitor-count fallback, and preserving natural FAQ/recommendation transitions.
+- Extended lead handoff with known client parameters and dialogue summary for manager context, and updated tests/docs for the new conversational flow.
+
 ## [0.3.1] - 2026-04-24
 
 - Added structured observability for dialogue flow: function-level phases, user/bot identifiers, and response trace points in Telegram handlers.

@@ -81,6 +81,11 @@ last_recommendation_context: dict[int, dict[str, object]] = {}
 dialogue_context_store: dict[int, DialogueContext] = {}
 
 
+def _reset_user_context(user_id: int) -> None:
+    last_recommendation_context.pop(user_id, None)
+    dialogue_context_store.pop(user_id, None)
+
+
 def _user_id(message: Message) -> int | None:
     return message.from_user.id if message.from_user else None
 
@@ -102,7 +107,17 @@ def _map_use_case(raw_value: str | None) -> str | None:
 
 def _build_recommendation_context(data: Mapping[str, object]) -> dict[str, object]:
     context: dict[str, object] = {}
-    for field in ("budget", "user_height", "monitors_count", "use_case", "recommended_products"):
+    for field in (
+        "budget",
+        "user_height",
+        "monitors_count",
+        "use_case",
+        "recommended_products",
+        "known_params",
+        "recent_dialogue_summary",
+        "recent_questions",
+        "assistant_comment",
+    ):
         if field in data and data[field] is not None:
             context[field] = data[field]
     if "user_height" in context:
@@ -428,13 +443,16 @@ async def lead_comment(message: Message, state: FSMContext) -> None:
     if message.from_user:
         context = dialogue_context_store.get(message.from_user.id)
         if context:
+            summary = context.get_context_summary()
             data["recent_questions"] = context.recent_questions[-5:]
+            data["known_params"] = summary["known_params"]
+            data["recent_dialogue_summary"] = summary["recent_dialogue_summary"]
             data["selected_product_id"] = (
                 context.recommended_products[0] if context.recommended_products else None
             )
             data["assistant_comment"] = (
-                "Пользователь прошел консультацию в боте, "
-                "рекомендуем уточнить финальную конфигурацию и сроки."
+                "Пользователь прошел консультацию в боте. "
+                "Проверьте финальные требования к сетапу, размеру и срокам поставки."
             )
     try:
         lead = lead_service.build_lead(data)
@@ -460,8 +478,7 @@ async def lead_comment(message: Message, state: FSMContext) -> None:
         )
     finally:
         if message.from_user:
-            last_recommendation_context.pop(message.from_user.id, None)
-            dialogue_context_store.pop(message.from_user.id, None)
+            _reset_user_context(message.from_user.id)
         await state.clear()
 
 
@@ -469,8 +486,7 @@ async def lead_comment(message: Message, state: FSMContext) -> None:
 async def restart_dialogue(message: Message, state: FSMContext) -> None:
     await state.clear()
     if message.from_user:
-        last_recommendation_context.pop(message.from_user.id, None)
-        dialogue_context_store.pop(message.from_user.id, None)
+        _reset_user_context(message.from_user.id)
     await message.answer(ASSISTANT_RESET_TEXT, reply_markup=main_menu_keyboard())
 
 
@@ -561,8 +577,7 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
         extra={"intent": response.intent, "goal": response.goal},
     )
     if response.reset_context:
-        dialogue_context_store.pop(user_id, None)
-        last_recommendation_context.pop(user_id, None)
+        _reset_user_context(user_id)
         await message.answer(response.text, reply_markup=main_menu_keyboard())
         log_dialogue_event(
             phase="bot_answer",
@@ -573,6 +588,7 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
         )
         return
     if response.start_lead_flow:
+        summary = context.get_context_summary()
         await state.update_data(
             budget=context.known_params.budget_max,
             height_cm=context.known_params.height_cm,
@@ -580,6 +596,13 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
             use_case=context.known_params.use_case,
             has_pc_case=context.known_params.has_pc_case,
             recommended_products=context.recommended_products,
+            known_params=summary["known_params"],
+            recent_dialogue_summary=summary["recent_dialogue_summary"],
+            recent_questions=summary["recent_questions"],
+            assistant_comment=(
+                "Клиент запросил передачу менеджеру после консультации "
+                "в свободном диалоге."
+            ),
             lead_short_flow=True,
         )
         await message.answer(response.text)
@@ -594,12 +617,20 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
         return
 
     if context.recommended_products:
+        summary = context.get_context_summary()
         last_recommendation_context[user_id] = {
             "budget": context.known_params.budget_max,
             "height_cm": context.known_params.height_cm,
             "monitors_count": context.known_params.monitors_count,
             "use_case": context.known_params.use_case,
             "recommended_products": context.recommended_products,
+            "known_params": summary["known_params"],
+            "recent_dialogue_summary": summary["recent_dialogue_summary"],
+            "recent_questions": summary["recent_questions"],
+            "assistant_comment": (
+                "Клиент получил рекомендации в свободном диалоге. "
+                "Нужна квалификация перед финальным оффером."
+            ),
         }
         await message.answer(response.text, reply_markup=recommendation_ready_keyboard())
         log_dialogue_event(

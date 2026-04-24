@@ -33,6 +33,9 @@ def extract_monitors_count(text: str) -> int | None:
 
 def extract_budget_range(text: str) -> tuple[int | None, int | None]:
     normalized = text.lower().replace(" ", "")
+    budget_keyword_match = re.search(r"(?:бюджет|budget)\D{0,8}(\d{4,6})", text.lower())
+    if budget_keyword_match:
+        return None, int(budget_keyword_match.group(1))
     range_match = re.search(r"(\d{2,3})[-–](\d{2,3})к", normalized)
     if range_match:
         return int(range_match.group(1)) * 1000, int(range_match.group(2)) * 1000
