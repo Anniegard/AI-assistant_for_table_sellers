@@ -18,3 +18,10 @@ class RecommendationService:
     def get_ranked_recommendations(self, query: RecommendationQuery) -> list[RecommendationResult]:
         products = self.repository.load_products()
         return self.recommender.recommend_scored(products=products, query=query)
+
+    def get_products_by_ids(self, product_ids: list[str]):
+        ids = set(product_ids)
+        if not ids:
+            return []
+        products = self.repository.load_products()
+        return [product for product in products if product.id in ids]

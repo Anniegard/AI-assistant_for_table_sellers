@@ -33,6 +33,7 @@ def test_dialogue_service_extracts_params_and_recommends() -> None:
     assert context.known_params.budget_max == 50000
     assert context.known_params.use_case == "home_office"
     assert context.recommended_products
+    assert "cabletray pro" not in response.text.lower()
 
 
 def test_parse_budget_from_compact_free_text() -> None:
@@ -120,3 +121,33 @@ def test_dialogue_context_stores_recent_user_and_assistant_messages() -> None:
     history = context.get_recent_history(limit=10)
     assert len(history) == 10
     assert {item.role for item in history} == {"user", "assistant"}
+
+
+def test_cheaper_request_does_not_repeat_same_products() -> None:
+    service = _build_service()
+    context = DialogueContext(user_id=11, known_params=KnownClientParams())
+    first = service.handle("рост 190 бюджет 50000 для дома", context)
+    first_ids = list(context.recommended_products)
+    assert first.goal == AssistantGoal.RECOMMEND
+    assert first_ids
+
+    second = service.handle("давай дешевле", context)
+    second_ids = list(context.recommended_products)
+    assert second.goal in {AssistantGoal.RECOMMEND, AssistantGoal.HANDLE_OBJECTION}
+    if second.goal == AssistantGoal.RECOMMEND:
+        assert second_ids
+        assert second_ids != first_ids
+    else:
+        assert "дешевле подходящих" in second.text.lower()
+
+
+def test_accessory_can_be_recommended_only_for_accessory_intent() -> None:
+    service = _build_service()
+    context = DialogueContext(user_id=12, known_params=KnownClientParams())
+    accessory_response = service.handle("какие аксессуары нужны для стола?", context)
+    assert "cabletray pro" in accessory_response.text.lower()
+
+    desk_context = DialogueContext(user_id=13, known_params=KnownClientParams())
+    desk_response = service.handle("подбери стол рост 190 бюджет 50000", desk_context)
+    assert desk_response.goal == AssistantGoal.RECOMMEND
+    assert "cabletray pro" not in desk_response.text.lower()

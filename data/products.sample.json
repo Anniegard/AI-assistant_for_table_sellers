@@ -2,7 +2,7 @@
   {
     "id": "demo-desk-001",
     "name": "FlexDesk Start 100",
-    "category": "single_motor_desk",
+    "category": "adjustable_desk",
     "segment": "budget",
     "price": 25900,
     "min_height_cm": 72,
@@ -23,7 +23,7 @@
   {
     "id": "demo-desk-002",
     "name": "FlexDesk Start 120",
-    "category": "single_motor_desk",
+    "category": "adjustable_desk",
     "segment": "budget",
     "price": 29900,
     "min_height_cm": 71,
@@ -44,7 +44,7 @@
   {
     "id": "demo-desk-003",
     "name": "WorkLift Core 120",
-    "category": "dual_motor_desk",
+    "category": "adjustable_desk",
     "segment": "middle",
     "price": 42900,
     "min_height_cm": 65,
@@ -65,7 +65,7 @@
   {
     "id": "demo-desk-004",
     "name": "WorkLift Core 140",
-    "category": "dual_motor_desk",
+    "category": "adjustable_desk",
     "segment": "middle",
     "price": 48900,
     "min_height_cm": 64,
@@ -86,7 +86,7 @@
   {
     "id": "demo-desk-005",
     "name": "WorkLift Corner L",
-    "category": "corner_desk",
+    "category": "adjustable_desk",
     "segment": "premium",
     "price": 79900,
     "min_height_cm": 66,
@@ -107,7 +107,7 @@
   {
     "id": "demo-desk-006",
     "name": "ProLift Studio 140",
-    "category": "dual_motor_desk",
+    "category": "adjustable_desk",
     "segment": "premium",
     "price": 87900,
     "min_height_cm": 63,
@@ -128,7 +128,7 @@
   {
     "id": "demo-desk-007",
     "name": "FrameKit Basic",
-    "category": "frame_only",
+    "category": "other",
     "segment": "budget",
     "price": 21900,
     "min_height_cm": 70,
@@ -149,7 +149,7 @@
   {
     "id": "demo-desk-008",
     "name": "FrameKit Dual Pro",
-    "category": "frame_only",
+    "category": "other",
     "segment": "middle",
     "price": 37900,
     "min_height_cm": 64,
@@ -170,7 +170,7 @@
   {
     "id": "demo-desk-009",
     "name": "CableTray Pro",
-    "category": "accessories",
+    "category": "accessory",
     "segment": "budget",
     "price": 3900,
     "min_height_cm": 0,
@@ -191,7 +191,7 @@
   {
     "id": "demo-desk-010",
     "name": "MonitorArm Duo",
-    "category": "accessories",
+    "category": "accessory",
     "segment": "middle",
     "price": 7900,
     "min_height_cm": 0,
@@ -212,7 +212,7 @@
   {
     "id": "demo-desk-011",
     "name": "FlexDesk Family 130",
-    "category": "dual_motor_desk",
+    "category": "adjustable_desk",
     "segment": "middle",
     "price": 51900,
     "min_height_cm": 65,
@@ -233,7 +233,7 @@
   {
     "id": "demo-desk-012",
     "name": "ProLift Executive 160",
-    "category": "dual_motor_desk",
+    "category": "adjustable_desk",
     "segment": "premium",
     "price": 109000,
     "min_height_cm": 62,

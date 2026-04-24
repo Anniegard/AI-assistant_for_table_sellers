@@ -14,6 +14,7 @@ class DialogueIntent(StrEnum):
     DELIVERY_WARRANTY_MATERIALS = "delivery_warranty_materials"
     SMALL_TALK = "small_talk"
     OBJECTION_PRICE = "objection_price"
+    ACCESSORY_REQUEST = "accessory_request"
     UNKNOWN = "unknown"
 
 

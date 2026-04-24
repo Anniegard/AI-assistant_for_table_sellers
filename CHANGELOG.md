@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.4] - 2026-04-24
+
+- Fixed desk recommendation boundaries: main подбор now excludes accessories by default, enforces strict budget matching, and only uses above-budget fallback when no in-budget desk exists.
+- Added dedicated cheaper-flow recalculation in free-text dialogue to avoid repeating previous products and return only truly cheaper desk options (or an explicit no-cheaper message).
+- Split accessory vs desk behavior in wording/explanations, added accessory intent handling, and expanded regression tests for category filtering, strict budget, cheaper requests, and accessory explanation safety.
+
 ## [0.3.3] - 2026-04-24
 
 - Fixed free-text budget parsing for compact and conversational formats (`50к`, `50 тыс`, `до 50 000`, `50000 рублей`) including combined parameter messages.

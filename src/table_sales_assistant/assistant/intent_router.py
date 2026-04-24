@@ -41,6 +41,19 @@ class IntentRouter:
             return DialogueIntent.COMPARE
         if any(token in lowered for token in ("дорого", "дешевле", "бюджетн")):
             return DialogueIntent.OBJECTION_PRICE
+        if any(
+            token in lowered
+            for token in (
+                "аксессуар",
+                "аксессуары",
+                "лоток",
+                "кабель-канал",
+                "кабель канал",
+                "что добавить к столу",
+                "нужен лоток",
+            )
+        ):
+            return DialogueIntent.ACCESSORY_REQUEST
         if any(token in lowered for token in ("привет", "как дела", "спасибо")):
             return DialogueIntent.SMALL_TALK
         if any(

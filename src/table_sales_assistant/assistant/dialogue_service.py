@@ -22,6 +22,8 @@ from table_sales_assistant.services.recommendation_service import Recommendation
 
 
 class DialogueService:
+    _ACCESSORY_CATEGORIES = {"accessory", "accessories"}
+
     def __init__(
         self,
         recommendation_service: RecommendationService,
@@ -111,6 +113,137 @@ class DialogueService:
     def _with_history(context: DialogueContext, response: AssistantResponse) -> AssistantResponse:
         context.add_assistant_message(response.text)
         return response
+
+    @classmethod
+    def _is_accessory(cls, category: str) -> bool:
+        return (category or "").strip().lower() in cls._ACCESSORY_CATEGORIES
+
+    def _build_recommendation_query(self, context: DialogueContext) -> RecommendationQuery:
+        monitors_count = context.known_params.monitors_count or 2
+        return RecommendationQuery(
+            budget=context.known_params.budget_max,
+            user_height_cm=context.known_params.height_cm,
+            monitors_count=monitors_count,
+            use_case=context.known_params.use_case,
+            has_pc_case=context.known_params.has_pc_case,
+            include_accessories=False,
+            strict_budget=True,
+        )
+
+    def _format_main_recommendation_text(
+        self,
+        context: DialogueContext,
+        ranked: list,
+        explanations: dict[str, str],
+        *,
+        cheaper_intro: str | None = None,
+    ) -> str:
+        lines: list[str] = []
+        intro_parts: list[str] = []
+        if context.known_params.height_cm:
+            intro_parts.append(f"рост {context.known_params.height_cm} см")
+        if context.known_params.budget_max:
+            intro_parts.append(
+                f"бюджет до {context.known_params.budget_max:,} рублей".replace(",", " ")
+            )
+        if context.known_params.use_case == "home_office":
+            intro_parts.append("сценарий: домашнее рабочее место")
+        elif context.known_params.use_case:
+            intro_parts.append(f"сценарий: {context.known_params.use_case}")
+        if intro_parts:
+            lines.append(f"Понял: {', '.join(intro_parts)}.")
+        if cheaper_intro:
+            lines.append(cheaper_intro)
+        if context.known_params.monitors_count is None:
+            lines.append(
+                "Количество мониторов вы не указали, поэтому сделаю предварительный "
+                "подбор для 1-2 мониторов."
+            )
+        lines.append("")
+        lines.append("Подойдут такие варианты:")
+        for idx, item in enumerate(ranked, start=1):
+            lines.append(f"{idx}. {item.product.name}: {item.product.price} ₽")
+            lines.append(f"Почему подходит: {item.reasons[0]}.")
+            if context.known_params.monitors_count is None:
+                lines.append("Если у вас 2+ монитора, лучше уточнить размер столешницы.")
+            elif item.tradeoffs:
+                lines.append(f"Компромисс: {item.tradeoffs[0]}.")
+            explanation = explanations.get(item.product.id, "").strip()
+            if explanation:
+                lines.append(f"Комментарий: {explanation}")
+            lines.append("")
+        lines.append(
+            "Могу сравнить эти варианты, подобрать дешевле, ответить на вопросы "
+            "или помочь оставить заявку менеджеру."
+        )
+        lines.append(
+            "Дополнительно можно рассмотреть аксессуары: лоток для кабелей, "
+            "держатель системного блока, кронштейн для монитора."
+        )
+        return "\n".join(lines).strip()
+
+    def _build_cheaper_response(
+        self, context: DialogueContext, intent: DialogueIntent
+    ) -> AssistantResponse:
+        if not context.recommended_products:
+            return ResponseBuilder.plain(
+                "Уточните параметры, и я сразу подберу более бюджетные варианты: рост и бюджет.",
+                goal=AssistantGoal.ASK_MISSING_PARAM,
+                intent=intent,
+            )
+        previous_products = self.recommendation_service.get_products_by_ids(
+            context.recommended_products
+        )
+        previous_desks = [
+            product for product in previous_products if not self._is_accessory(product.category)
+        ]
+        if not previous_desks:
+            return ResponseBuilder.plain(
+                "Пока нет предыдущей подборки столов. "
+                "Напишите рост и бюджет, и я пересчитаю варианты.",
+                goal=AssistantGoal.ASK_MISSING_PARAM,
+                intent=intent,
+            )
+        previous_min_price = min(product.price for product in previous_desks)
+        reduced_budget = int((context.known_params.budget_max or previous_min_price) * 0.8)
+        target_max_price = min(previous_min_price - 1, reduced_budget)
+        if target_max_price <= 0:
+            target_max_price = previous_min_price - 1
+        query = self._build_recommendation_query(context)
+        query.max_price_override = target_max_price
+        ranked = self.recommendation_service.get_ranked_recommendations(query)
+        ranked = [item for item in ranked if item.product.price < previous_min_price]
+        if not ranked:
+            return ResponseBuilder.with_cta(
+                (
+                    "Дешевле подходящих регулируемых столов в каталоге сейчас нет. "
+                    "Самый близкий бюджетный вариант уже в последней подборке. "
+                    "Можно снизить цену за счет одного мотора или меньшей столешницы."
+                ),
+                goal=AssistantGoal.HANDLE_OBJECTION,
+                intent=intent,
+                cta="Сравнить варианты",
+            )
+        context.recommended_products = [item.product.id for item in ranked]
+        explanations = self.explanation_service.explain_products(
+            [item.product for item in ranked],
+            query_context=asdict(query),
+        )
+        cheaper_intro = (
+            f"Посмотрел варианты дешевле. В каталоге есть столы до {target_max_price:,} ₽."
+        ).replace(",", " ")
+        text = self._format_main_recommendation_text(
+            context,
+            ranked,
+            explanations,
+            cheaper_intro=cheaper_intro,
+        )
+        return ResponseBuilder.with_cta(
+            text,
+            goal=AssistantGoal.RECOMMEND,
+            intent=intent,
+            cta="Сравнить варианты",
+        )
 
     def handle(self, text: str, context: DialogueContext) -> AssistantResponse:
         context.add_user_message(text)
@@ -215,6 +348,45 @@ class DialogueService:
                     cta="Позвать менеджера",
                 ),
             )
+        if intent == DialogueIntent.ACCESSORY_REQUEST:
+            products = self.recommendation_service.repository.load_products()
+            accessories = [
+                product
+                for product in products
+                if product.in_stock and self._is_accessory(product.category)
+            ]
+            if context.known_params.use_case:
+                use_case_filtered = [
+                    product
+                    for product in accessories
+                    if context.known_params.use_case in product.use_cases
+                ]
+                if use_case_filtered:
+                    accessories = use_case_filtered
+            accessories.sort(key=lambda item: item.price)
+            if not accessories:
+                return self._with_history(
+                    context,
+                    ResponseBuilder.plain(
+                        "В каталоге сейчас нет подходящих аксессуаров в наличии.",
+                        goal=AssistantGoal.ANSWER_QUESTION,
+                        intent=intent,
+                    ),
+                )
+            top = accessories[:3]
+            lines = ["Из аксессуаров можно рассмотреть:"]
+            for product in top:
+                lines.append(f"- {product.name}: {product.price} ₽")
+            lines.append("Если хотите, подберу аксессуары под ваш текущий стол и сетап.")
+            return self._with_history(
+                context,
+                ResponseBuilder.with_cta(
+                    "\n".join(lines),
+                    goal=AssistantGoal.ANSWER_QUESTION,
+                    intent=intent,
+                    cta="Подобрать стол",
+                ),
+            )
         if intent == DialogueIntent.SMALL_TALK:
             return self._with_history(
                 context,
@@ -233,7 +405,6 @@ class DialogueService:
             DialogueIntent.RECOMMEND,
             DialogueIntent.UNKNOWN,
             DialogueIntent.CLARIFY_RECOMMENDATION,
-            DialogueIntent.OBJECTION_PRICE,
             DialogueIntent.COMPARE,
         ):
             missing = self._missing_params(context)
@@ -246,14 +417,7 @@ class DialogueService:
                         intent=intent,
                     ),
                 )
-            monitors_count = context.known_params.monitors_count or 2
-            query = RecommendationQuery(
-                budget=context.known_params.budget_max,
-                user_height_cm=context.known_params.height_cm,
-                monitors_count=monitors_count,
-                use_case=context.known_params.use_case,
-                has_pc_case=context.known_params.has_pc_case,
-            )
+            query = self._build_recommendation_query(context)
             ranked = self.recommendation_service.get_ranked_recommendations(query)
             if not ranked:
                 return self._with_history(
@@ -274,47 +438,18 @@ class DialogueService:
                 products,
                 query_context=asdict(query),
             )
-            lines = []
-            intro_parts: list[str] = []
-            if context.known_params.height_cm:
-                intro_parts.append(f"рост {context.known_params.height_cm} см")
-            if context.known_params.budget_max:
-                intro_parts.append(
-                    f"бюджет до {context.known_params.budget_max:,} рублей".replace(",", " ")
-                )
-            if context.known_params.use_case == "home_office":
-                intro_parts.append("сценарий: домашнее рабочее место")
-            elif context.known_params.use_case:
-                intro_parts.append(f"сценарий: {context.known_params.use_case}")
-            if intro_parts:
-                lines.append(f"Понял: {', '.join(intro_parts)}.")
-            lines.append("Вот несколько вариантов из каталога:")
-            if context.known_params.monitors_count is None:
-                lines.append(
-                    "Количество мониторов вы не указали, поэтому сделаю предварительный "
-                    "подбор для 1-2 мониторов."
-                )
-            for item in ranked:
-                lines.append(
-                    f"- {item.product.name} ({item.product.price} руб, fit {item.fit_score}): "
-                    f"{item.reasons[0]}. Компромисс: "
-                    f"{item.tradeoffs[0] if item.tradeoffs else 'без явных компромиссов'}"
-                )
-            first_id = ranked[0].product.id
-            lines.append(f"\nПочему подходит: {explanations.get(first_id, '')}")
-            lines.append(
-                "Могу сравнить эти варианты, подобрать дешевле, ответить на вопросы "
-                "или помочь оставить заявку менеджеру."
-            )
+            text = self._format_main_recommendation_text(context, ranked, explanations)
             return self._with_history(
                 context,
                 ResponseBuilder.with_cta(
-                    "\n".join(lines),
+                    text,
                     goal=AssistantGoal.RECOMMEND,
                     intent=intent,
                     cta="Сравнить варианты",
                 ),
             )
+        if intent == DialogueIntent.OBJECTION_PRICE:
+            return self._with_history(context, self._build_cheaper_response(context, intent))
 
         return self._with_history(
             context,

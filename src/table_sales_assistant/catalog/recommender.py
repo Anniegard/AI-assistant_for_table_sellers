@@ -11,6 +11,9 @@ class RecommendationQuery:
     motors_preference: int | None = None
     use_case: str | None = None
     has_pc_case: bool | None = None
+    include_accessories: bool = False
+    strict_budget: bool = True
+    max_price_override: int | None = None
 
 
 @dataclass(slots=True)
@@ -23,11 +26,46 @@ class RecommendationResult:
 
 
 class ProductRecommender:
-    def _hard_filter(self, product: Product, query: RecommendationQuery) -> bool:
+    _DESK_CATEGORIES = {
+        "desk",
+        "table",
+        "adjustable_desk",
+        "single_motor_desk",
+        "dual_motor_desk",
+        "corner_desk",
+    }
+    _ACCESSORY_CATEGORIES = {"accessory", "accessories"}
+
+    @classmethod
+    def _normalized_category(cls, category: str) -> str:
+        lowered = (category or "").strip().lower()
+        if lowered in cls._ACCESSORY_CATEGORIES:
+            return "accessory"
+        if lowered in cls._DESK_CATEGORIES:
+            return "adjustable_desk"
+        return lowered or "other"
+
+    def _hard_filter(
+        self,
+        product: Product,
+        query: RecommendationQuery,
+        *,
+        allow_above_budget: bool,
+    ) -> bool:
         if not product.in_stock:
             return False
-        if query.budget is not None and product.price > int(query.budget * 1.2):
+        normalized_category = self._normalized_category(product.category)
+        if not query.include_accessories and normalized_category != "adjustable_desk":
             return False
+        budget_cap = (
+            query.max_price_override
+            if query.max_price_override is not None
+            else query.budget
+        )
+        if budget_cap is not None:
+            max_allowed = int(budget_cap * 1.2) if allow_above_budget else budget_cap
+            if product.price > max_allowed:
+                return False
         if query.user_height_cm is not None and not (
             product.recommended_user_height_min_cm
             <= query.user_height_cm
@@ -112,7 +150,21 @@ class ProductRecommender:
     def recommend_scored(
         self, products: list[Product], query: RecommendationQuery, limit: int = 3
     ) -> list[RecommendationResult]:
-        filtered = [product for product in products if self._hard_filter(product, query)]
+        filtered = [
+            product
+            for product in products
+            if self._hard_filter(product, query, allow_above_budget=False)
+        ]
+        if (
+            query.strict_budget
+            and (query.max_price_override is not None or query.budget is not None)
+            and not filtered
+        ):
+            filtered = [
+                product
+                for product in products
+                if self._hard_filter(product, query, allow_above_budget=True)
+            ]
         results = [self._score(product, query) for product in filtered]
         results.sort(
             key=lambda item: (

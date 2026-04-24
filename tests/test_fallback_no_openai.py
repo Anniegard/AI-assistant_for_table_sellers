@@ -24,3 +24,11 @@ def test_openai_disabled_mode_still_returns_recommendations_and_explanations() -
 def test_faq_works_without_openai() -> None:
     answer = FAQService(Path("data/knowledge")).answer("гарантия")
     assert answer
+
+
+def test_accessory_explanation_does_not_use_height_fit() -> None:
+    products = ProductRepository(Path("data/products.sample.json")).load_products()
+    accessory = next(product for product in products if product.name == "CableTray Pro")
+    explanation = ExplanationService(OpenAIClient("")).deterministic_explanation(accessory).lower()
+    forbidden_tokens = ("подходит под рост", "высота", "подъем", "грузоподъемность")
+    assert all(token not in explanation for token in forbidden_tokens)

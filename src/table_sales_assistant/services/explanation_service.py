@@ -8,6 +8,13 @@ class ExplanationService:
         self.ai_client = ai_client
 
     def deterministic_explanation(self, product: Product) -> str:
+        category = (product.category or "").strip().lower()
+        if category in {"accessory", "accessories"}:
+            return (
+                f"{product.name}: аксессуар для организации рабочего места. "
+                f"Цена {product.price} руб, материал {product.material}. "
+                "Подходит как дополнение к столу, а не как основной вариант стола."
+            )
         return (
             f"{product.name}: цена {product.price} руб, моторов {product.motors_count}, "
             f"столешница {product.tabletop_width_cm}x{product.tabletop_depth_cm} см, "
@@ -29,7 +36,10 @@ class ExplanationService:
                 user_prompt = (
                     f"Контекст запроса: {query_context}\n"
                     f"Товар: {product.model_dump()}\n"
-                    "Объясни, почему этот вариант подходит. Не выдумывай новые товары и свойства."
+                    "Объясни, почему этот вариант подходит. "
+                    "Если это аксессуар, объясняй только как дополнение к рабочему месту "
+                    "и не описывай его как стол по росту/высоте/подъему. "
+                    "Не выдумывай новые товары и свойства."
                 )
                 ai_text = self.ai_client.simple_chat(
                     system_prompt=ERGO_ASSISTANT_SYSTEM_PROMPT,
