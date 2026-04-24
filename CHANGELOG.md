@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.1] - 2026-04-24
+
+- QA hardening before client demo: improved Telegram flow stability and clearer startup error when `TELEGRAM_BOT_TOKEN` is missing.
+- Polished recommendation UX with human-readable scenario prompts and mapping to internal `use_case` values.
+- Added reliable recommendation-to-lead handoff with shortcut action `Оставить заявку по этим вариантам` and reduced post-recommendation lead form.
+- Improved manager notification readability and safe skip logging when `MANAGER_TELEGRAM_CHAT_ID` is not configured.
+- Hardened FAQ keyword search for Russian phrasing and expanded tests for menu, FAQ, lead recommendation carry-over, and notification output.
+- Added source-available licensing terms in `LICENSE` and clarified non-commercial usage in `README.md`.
+
 ## [0.2.0] - 2026-04-24
 
 - Implemented Telegram MVP flow: `/start`, main menu, recommendation dialogue, FAQ, lead collection, and demo mode.

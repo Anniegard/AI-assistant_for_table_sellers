@@ -10,8 +10,14 @@ ASK_BUDGET_TEXT = "Укажите бюджет в рублях, например
 ASK_HEIGHT_TEXT = "Укажите ваш рост в сантиметрах, например: 178"
 ASK_MONITORS_TEXT = "Сколько мониторов планируете использовать: 1, 2 или 3?"
 ASK_USE_CASE_TEXT = (
-    "Сценарий использования: home_office, it_work, content_creation, "
-    "study, trading, engineering, executive_office, family_workspace, custom_build"
+    "Сценарий использования:\n"
+    "- Для дома\n"
+    "- Для офиса\n"
+    "- Для IT / разработки\n"
+    "- Для работы с двумя мониторами\n"
+    "- Для руководителя\n"
+    "- Для учебы\n"
+    "- Не знаю, помогите выбрать"
 )
 ASK_MOTORS_TEXT = "Предпочтение по моторам: 1, 2 или 0 если без предпочтений"
 
@@ -27,11 +33,14 @@ FAQ_NO_HITS_TEXT = (
 )
 
 LEAD_START_TEXT = "Начнем оформление заявки. Как вас зовут?"
+LEAD_START_AFTER_RECOMMENDATION_TEXT = (
+    "Начнем оформление заявки по подобранным вариантам. Как вас зовут?"
+)
 LEAD_ASK_PHONE_TEXT = "Укажите телефон для связи."
 LEAD_ASK_CITY_TEXT = "Из какого вы города?"
 LEAD_ASK_HEIGHT_TEXT = "Рост в сантиметрах, например: 178"
 LEAD_ASK_BUDGET_TEXT = "Планируемый бюджет в рублях, например: 60000"
-LEAD_ASK_USE_CASE_TEXT = "Сценарий использования, например: home_office"
+LEAD_ASK_USE_CASE_TEXT = "Сценарий использования, например: Для дома"
 LEAD_ASK_MONITORS_TEXT = "Количество мониторов: 1, 2 или 3"
 LEAD_ASK_HAS_PC_CASE_TEXT = "Нужна зона под системный блок: да или нет"
 LEAD_ASK_SIZE_TEXT = "Предпочтительный размер столешницы, например: 140x70"

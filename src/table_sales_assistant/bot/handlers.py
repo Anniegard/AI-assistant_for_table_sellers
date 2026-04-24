@@ -1,10 +1,12 @@
-﻿from aiogram import F, Router
+﻿from collections.abc import Mapping
+
+from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from table_sales_assistant.ai.client import OpenAIClient
-from table_sales_assistant.bot.keyboards import main_menu_keyboard
+from table_sales_assistant.bot.keyboards import main_menu_keyboard, recommendation_ready_keyboard
 from table_sales_assistant.bot.messages import (
     ASK_BUDGET_TEXT,
     ASK_HEIGHT_TEXT,
@@ -27,6 +29,7 @@ from table_sales_assistant.bot.messages import (
     LEAD_ASK_SIZE_TEXT,
     LEAD_ASK_USE_CASE_TEXT,
     LEAD_SAVED_TEXT,
+    LEAD_START_AFTER_RECOMMENDATION_TEXT,
     LEAD_START_TEXT,
     MENU_TEXT,
     NO_PRODUCTS_TEXT,
@@ -54,6 +57,40 @@ explanation_service = ExplanationService(OpenAIClient(settings.OPENAI_API_KEY))
 lead_repository = JSONLeadRepository(settings.leads_path)
 lead_service = LeadService()
 manager_notifier = TelegramManagerNotifier(settings.MANAGER_TELEGRAM_CHAT_ID)
+
+
+USE_CASE_MAP = {
+    "для дома": "home_office",
+    "для офиса": "family_workspace",
+    "для it / разработки": "it_work",
+    "для работы с двумя мониторами": "engineering",
+    "для руководителя": "executive_office",
+    "для учебы": "study",
+    "не знаю, помогите выбрать": None,
+}
+
+last_recommendation_context: dict[int, dict[str, object]] = {}
+
+
+def _normalize_text(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def _map_use_case(raw_value: str | None) -> str | None:
+    normalized = _normalize_text(raw_value)
+    if not normalized:
+        return None
+    return USE_CASE_MAP.get(normalized, normalized)
+
+
+def _build_recommendation_context(data: Mapping[str, object]) -> dict[str, object]:
+    context: dict[str, object] = {}
+    for field in ("budget", "user_height", "monitors_count", "use_case", "recommended_products"):
+        if field in data and data[field] is not None:
+            context[field] = data[field]
+    if "user_height" in context:
+        context["height_cm"] = context["user_height"]
+    return context
 
 
 @router.message(CommandStart())
@@ -111,7 +148,7 @@ async def recommendation_monitors(message: Message, state: FSMContext) -> None:
 
 @router.message(RecommendationStates.use_case)
 async def recommendation_use_case(message: Message, state: FSMContext) -> None:
-    await state.update_data(use_case=(message.text or "").strip())
+    await state.update_data(use_case=_map_use_case(message.text))
     await state.set_state(RecommendationStates.motors)
     await message.answer(ASK_MOTORS_TEXT)
 
@@ -149,9 +186,14 @@ async def recommendation_motors(message: Message, state: FSMContext) -> None:
             f"Комментарий: {explanation}"
         )
     await state.update_data(recommended_products=[p.id for p in products])
+    updated_data = await state.get_data()
+    if message.from_user:
+        last_recommendation_context[message.from_user.id] = (
+            _build_recommendation_context(updated_data)
+        )
     await message.answer(
-        "Рекомендации готовы. Можно оставить заявку.",
-        reply_markup=main_menu_keyboard(),
+        "Рекомендации готовы. Можно оставить заявку по этим вариантам.",
+        reply_markup=recommendation_ready_keyboard(),
     )
     await state.clear()
 
@@ -174,8 +216,28 @@ async def faq_answer(message: Message, state: FSMContext) -> None:
 
 @router.message(F.text == "Оставить заявку")
 async def start_lead_flow(message: Message, state: FSMContext) -> None:
+    user_context = (
+        last_recommendation_context.get(message.from_user.id, {}) if message.from_user else {}
+    )
+    if user_context:
+        await state.update_data(**user_context, lead_short_flow=True)
+        await message.answer(LEAD_START_AFTER_RECOMMENDATION_TEXT)
+    else:
+        await message.answer(LEAD_START_TEXT)
     await state.set_state(LeadCollectionStates.name)
-    await message.answer(LEAD_START_TEXT)
+
+
+@router.message(F.text == "Оставить заявку по этим вариантам")
+async def start_lead_flow_for_recommendation(message: Message, state: FSMContext) -> None:
+    user_context = (
+        last_recommendation_context.get(message.from_user.id, {}) if message.from_user else {}
+    )
+    if user_context:
+        await state.update_data(**user_context, lead_short_flow=True)
+        await message.answer(LEAD_START_AFTER_RECOMMENDATION_TEXT)
+    else:
+        await message.answer(LEAD_START_TEXT)
+    await state.set_state(LeadCollectionStates.name)
 
 
 @router.message(LeadCollectionStates.name)
@@ -195,6 +257,11 @@ async def lead_phone(message: Message, state: FSMContext) -> None:
 @router.message(LeadCollectionStates.city)
 async def lead_city(message: Message, state: FSMContext) -> None:
     await state.update_data(city=(message.text or "").strip())
+    data = await state.get_data()
+    if data.get("lead_short_flow"):
+        await state.set_state(LeadCollectionStates.comment)
+        await message.answer(LEAD_ASK_COMMENT_TEXT)
+        return
     await state.set_state(LeadCollectionStates.height_cm)
     await message.answer(LEAD_ASK_HEIGHT_TEXT)
 
@@ -225,7 +292,7 @@ async def lead_budget(message: Message, state: FSMContext) -> None:
 
 @router.message(LeadCollectionStates.use_case)
 async def lead_use_case(message: Message, state: FSMContext) -> None:
-    await state.update_data(use_case=(message.text or "").strip())
+    await state.update_data(use_case=_map_use_case(message.text))
     await state.set_state(LeadCollectionStates.monitors_count)
     await message.answer(LEAD_ASK_MONITORS_TEXT)
 
@@ -282,4 +349,6 @@ async def lead_comment(message: Message, state: FSMContext) -> None:
     except Exception:
         await message.answer(GENERIC_ERROR_TEXT, reply_markup=main_menu_keyboard())
     finally:
+        if message.from_user:
+            last_recommendation_context.pop(message.from_user.id, None)
         await state.clear()

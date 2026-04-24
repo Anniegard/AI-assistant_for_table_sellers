@@ -1,6 +1,18 @@
 from table_sales_assistant.leads.models import Lead
 
 
+def _fmt_bool(value: bool | None) -> str:
+    if value is None:
+        return "-"
+    return "Да" if value else "Нет"
+
+
+def _fmt_optional(value: object | None) -> str:
+    if value in (None, ""):
+        return "-"
+    return str(value)
+
+
 def format_lead_for_manager(lead: Lead) -> str:
     recommended = ", ".join(lead.recommended_products) if lead.recommended_products else "-"
     return (
@@ -8,15 +20,15 @@ def format_lead_for_manager(lead: Lead) -> str:
         f"Имя: {lead.name}\n"
         f"Телефон: {lead.phone}\n"
         f"Город: {lead.city}\n"
-        f"Рост: {lead.height_cm}\n"
-        f"Бюджет: {lead.budget}\n"
-        f"Сценарий: {lead.use_case}\n"
-        f"Мониторы: {lead.monitors_count}\n"
-        f"Системный блок: {lead.has_pc_case}\n"
-        f"Размер: {lead.preferred_size}\n"
-        f"Доставка: {lead.needs_delivery}\n"
-        f"Сборка: {lead.needs_assembly}\n"
+        f"Бюджет: {_fmt_optional(lead.budget)}\n"
+        f"Рост: {_fmt_optional(lead.height_cm)}\n"
+        f"Сценарий: {_fmt_optional(lead.use_case)}\n"
+        f"Мониторы: {_fmt_optional(lead.monitors_count)}\n"
+        f"Системный блок: {_fmt_bool(lead.has_pc_case)}\n"
+        f"Размер: {_fmt_optional(lead.preferred_size)}\n"
+        f"Доставка: {_fmt_bool(lead.needs_delivery)}\n"
+        f"Сборка: {_fmt_bool(lead.needs_assembly)}\n"
         f"Рекомендации: {recommended}\n"
-        f"Комментарий: {lead.comment or '-'}\n"
+        f"Комментарий: {_fmt_optional(lead.comment)}\n"
         f"Источник: {lead.source}"
     )

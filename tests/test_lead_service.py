@@ -26,3 +26,20 @@ def test_build_lead_contains_required_fields() -> None:
     )
     assert lead.name == "Анна"
     assert lead.source == "telegram_demo"
+
+
+def test_build_lead_keeps_recommended_products_after_recommendation() -> None:
+    lead = LeadService.build_lead(
+        {
+            "name": "Игорь",
+            "phone": "+79005550000",
+            "city": "Москва",
+            "budget": 90000,
+            "height_cm": 185,
+            "use_case": "it_work",
+            "monitors_count": 2,
+            "recommended_products": ["desk-001", "desk-002", "desk-003"],
+            "comment": "Хочу оформить быстро",
+        }
+    )
+    assert lead.recommended_products == ["desk-001", "desk-002", "desk-003"]

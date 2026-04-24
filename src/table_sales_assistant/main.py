@@ -14,7 +14,9 @@ async def run_bot() -> None:
     setup_logging(settings.LOG_LEVEL)
     logger = logging.getLogger(__name__)
     if not settings.TELEGRAM_BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN is not configured.")
+        logger.error(
+            "TELEGRAM_BOT_TOKEN is not configured. Set it in .env for real Telegram запуск."
+        )
         return
 
     bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
