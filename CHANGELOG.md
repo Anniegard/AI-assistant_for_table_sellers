@@ -5,6 +5,7 @@
 - Added optional SQLite backends for catalog and knowledge with env-driven runtime switching (`CATALOG_BACKEND`, `KNOWLEDGE_BACKEND`) and explicit fail-fast behavior when DB files are missing.
 - Added local StolStoya demo importer CLI with normalization/parsing utilities, SQLite schema/storage layer, import run reporting, and strict `.gitignore` rules to keep scraped data out of GitHub.
 - Updated recommendation/FAQ behavior and expanded test coverage with synthetic fixtures for importer parsing, SQLite repositories, category guards, and normalization helpers.
+- Fixed `scripts/ingest_stolstoya.py` startup so it resolves `src` automatically and runs without manual `PYTHONPATH` setup.
 
 ## [0.3.4] - 2026-04-24
 
