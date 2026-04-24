@@ -113,19 +113,47 @@ def _extract_links(base_url: str, html: str) -> list[str]:
         normalized = full.split("#")[0]
         parsed_normalized = urlparse(normalized)
         path = (parsed_normalized.path or "/").lower()
-        allowed_roots = (
-            "/catalog",
-            "/blog",
-            "/faq",
-            "/delivery",
-            "/payment",
-            "/warranty",
-            "/garanti",
-            "/assembly",
-            "/material",
-            "/articles",
+        denied_prefixes = (
+            "/contact",
+            "/partners",
+            "/sales",
+            "/gift-certificate",
+            "/call",
+            "/rss",
+            "/privacy",
+            "/policy",
         )
-        if path == "/" or path.startswith(allowed_roots):
+        allowed_tokens = (
+            "catalog",
+            "stol",
+            "podstol",
+            "opor",
+            "stolesh",
+            "aksess",
+            "acsess",
+            "accessor",
+            "kresl",
+            "blog",
+            "faq",
+            "delivery",
+            "payment",
+            "warranty",
+            "garanti",
+            "assembly",
+            "material",
+            "article",
+            "office",
+            "design",
+            "corner",
+            "pryam",
+            "ugl",
+        )
+        if path == "/":
+            links.append(normalized)
+            continue
+        if path.startswith(denied_prefixes):
+            continue
+        if any(token in path for token in allowed_tokens):
             links.append(normalized)
     return sorted(set(links))
 
@@ -206,6 +234,21 @@ def _parse_knowledge(url: str, html: str) -> dict[str, object]:
 
 def _is_knowledge_page(url: str, title: str, text: str) -> bool:
     haystack = f"{url} {title} {text}".lower()
+    path = urlparse(url).path.lower()
+    if any(
+        token in path
+        for token in (
+            "catalog",
+            "stol",
+            "podstol",
+            "opory",
+            "stolesh",
+            "aksess",
+            "acsess",
+            "kresl",
+        )
+    ):
+        return False
     return any(
         token in haystack
         for token in (
