@@ -71,13 +71,16 @@ def detect_tabletop_material(text: str | None) -> str | None:
 
 def classify_category(url: str, title: str, breadcrumbs: str, text: str) -> str:
     haystack = f"{url} {title} {breadcrumbs} {text}".lower()
-    if any(token in haystack for token in ("кресл", "/chairs")):
+    path = url.lower()
+    if any(token in path for token in ("/chair", "/chairs", "/kresl")) and any(
+        token in haystack for token in ("кресл", "кресло", "chair")
+    ):
         return "chair"
     if any(token in haystack for token in ("аксессуар", "/accessories", "кабель", "кронштейн")):
         return "accessory"
-    if any(token in haystack for token in ("столешниц", "/tabletop")):
+    if any(token in haystack for token in ("столешниц", "/tabletop", "tabletop")):
         return "tabletop"
-    if any(token in haystack for token in ("подстоль", "рама", "/frame")):
+    if any(token in haystack for token in ("подстоль", "рама", "/frame", "frame")):
         return "frame"
     if any(
         token in haystack
@@ -87,6 +90,8 @@ def classify_category(url: str, title: str, breadcrumbs: str, text: str) -> str:
             "регулируем",
             "desk",
             "/catalog",
+            "подъемн",
+            "электростол",
         )
     ):
         return "adjustable_desk"

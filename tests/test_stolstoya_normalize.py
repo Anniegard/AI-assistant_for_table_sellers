@@ -37,3 +37,13 @@ def test_classify_category_adjustable_desk() -> None:
         text="Эргономичный стол для офиса",
     )
     assert category == "adjustable_desk"
+
+
+def test_classify_category_not_chair_without_chair_path() -> None:
+    category = classify_category(
+        url="https://stolstoya.ru/catalog/reguliruemye-stoly/model-1",
+        title="Эргономичный стол",
+        breadcrumbs="Каталог / Столы",
+        text="Подходит для офиса, не кресло.",
+    )
+    assert category == "adjustable_desk"

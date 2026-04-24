@@ -6,6 +6,7 @@
 - Added local StolStoya demo importer CLI with normalization/parsing utilities, SQLite schema/storage layer, import run reporting, and strict `.gitignore` rules to keep scraped data out of GitHub.
 - Updated recommendation/FAQ behavior and expanded test coverage with synthetic fixtures for importer parsing, SQLite repositories, category guards, and normalization helpers.
 - Fixed `scripts/ingest_stolstoya.py` startup so it resolves `src` automatically and runs without manual `PYTHONPATH` setup.
+- Improved importer dry-run stability: removed brittle seed paths, added safer link discovery/routing (`listing` vs `product`), reduced false `chair` categorization, and added routing regression tests.
 
 ## [0.3.4] - 2026-04-24
 

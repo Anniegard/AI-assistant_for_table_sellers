@@ -110,7 +110,23 @@ def _extract_links(base_url: str, html: str) -> list[str]:
         image_exts = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg")
         if any(parsed.path.lower().endswith(ext) for ext in image_exts):
             continue
-        links.append(full.split("#")[0])
+        normalized = full.split("#")[0]
+        parsed_normalized = urlparse(normalized)
+        path = (parsed_normalized.path or "/").lower()
+        allowed_roots = (
+            "/catalog",
+            "/blog",
+            "/faq",
+            "/delivery",
+            "/payment",
+            "/warranty",
+            "/garanti",
+            "/assembly",
+            "/material",
+            "/articles",
+        )
+        if path == "/" or path.startswith(allowed_roots):
+            links.append(normalized)
     return sorted(set(links))
 
 
@@ -211,6 +227,26 @@ def _is_catalog_like(url: str, title: str, text: str) -> bool:
         token in haystack
         for token in ("catalog", "каталог", "подстоль", "столеш", "аксессуар", "кресл", "стол")
     )
+
+
+def _is_product_page(url: str, title: str, text: str) -> bool:
+    haystack = f"{url} {title} {text}".lower()
+    has_product_markers = any(
+        token in haystack
+        for token in (
+            "цена",
+            "руб",
+            "₽",
+            "характерист",
+            "грузоподъем",
+            "мотор",
+            "размер",
+            "столешниц",
+        )
+    )
+    path = urlparse(url).path.lower().strip("/")
+    slug_depth = len([part for part in path.split("/") if part]) >= 2
+    return has_product_markers and slug_depth
 
 
 def _insert_records(
@@ -351,12 +387,9 @@ def _print_report(
 
 def run_import(args: ImportArgs) -> None:
     seeds = [
+        urljoin(args.source_base_url, "/"),
         urljoin(args.source_base_url, "/catalog"),
         urljoin(args.source_base_url, "/blog"),
-        urljoin(args.source_base_url, "/delivery"),
-        urljoin(args.source_base_url, "/payment"),
-        urljoin(args.source_base_url, "/warranty"),
-        urljoin(args.source_base_url, "/assembly"),
     ]
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT})
@@ -417,12 +450,14 @@ def run_import(args: ImportArgs) -> None:
         title_node = soup.select_one("h1") or soup.select_one("title")
         title = title_node.get_text(" ", strip=True) if title_node else ""
         text = _extract_text_content(soup)
-        if _is_catalog_like(url, title, text):
+        if _is_catalog_like(url, title, text) and _is_product_page(url, title, text):
             products.append(_parse_product(url, html))
-            page_type = "catalog_or_product"
+            page_type = "product"
         elif _is_knowledge_page(url, title, text):
             knowledge_docs.append(_parse_knowledge(url, html))
             page_type = "knowledge"
+        elif _is_catalog_like(url, title, text):
+            page_type = "catalog_listing"
         else:
             page_type = "other"
 
