@@ -18,5 +18,7 @@ Thumbs.db
 
 # Local runtime data
 data/leads.local.json
+data/dialogue_events.jsonl
 docs/commercial_positioning.md
+
 .env

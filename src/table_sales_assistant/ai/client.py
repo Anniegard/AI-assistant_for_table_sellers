@@ -1,4 +1,11 @@
-﻿from openai import OpenAI
+﻿import logging
+from time import perf_counter
+
+from openai import OpenAI
+
+from table_sales_assistant.observability import log_dialogue_event
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIClient:
@@ -12,7 +19,20 @@ class OpenAIClient:
 
     def simple_chat(self, system_prompt: str, user_prompt: str) -> str:
         if not self._client:
+            log_dialogue_event(
+                phase="openai_disabled",
+                question=user_prompt,
+                answer="AI mode is disabled: OPENAI_API_KEY is not configured.",
+                function_name="OpenAIClient.simple_chat",
+            )
             return 'AI mode is disabled: OPENAI_API_KEY is not configured.'
+        started = perf_counter()
+        log_dialogue_event(
+            phase="openai_request",
+            question=user_prompt,
+            function_name="OpenAIClient.simple_chat",
+            extra={"model": "gpt-4.1-mini", "system_prompt_len": len(system_prompt)},
+        )
         response = self._client.responses.create(
             model='gpt-4.1-mini',
             input=[
@@ -20,4 +40,14 @@ class OpenAIClient:
                 {'role': 'user', 'content': user_prompt},
             ],
         )
-        return response.output_text
+        output_text = response.output_text
+        elapsed_ms = int((perf_counter() - started) * 1000)
+        logger.info("OpenAI response processed in %sms", elapsed_ms)
+        log_dialogue_event(
+            phase="openai_response",
+            question=user_prompt,
+            answer=output_text,
+            function_name="OpenAIClient.simple_chat",
+            extra={"model": "gpt-4.1-mini", "latency_ms": elapsed_ms},
+        )
+        return output_text

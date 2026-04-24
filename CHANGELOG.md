@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1] - 2026-04-24
+
+- Added structured observability for dialogue flow: function-level phases, user/bot identifiers, and response trace points in Telegram handlers.
+- Added JSONL event sink `data/dialogue_events.jsonl` with fields `question`, `answer`, `user_id`, `lead_id`, `phase`, and extra metadata.
+- Added OpenAI request/response logging (including latency and fallback-disabled mode) for easier runtime diagnostics.
+- Updated `.gitignore` to exclude local dialogue event logs from repository history.
+
 ## [0.3.0] - 2026-04-24
 
 - Introduced `ЭргоАссистент` business layer (`assistant`) with intent routing, free-text parameter extraction, and dialogue orchestration decoupled from Telegram handlers.

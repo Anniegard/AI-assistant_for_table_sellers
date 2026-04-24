@@ -43,6 +43,7 @@ from table_sales_assistant.catalog.repository import ProductRepository
 from table_sales_assistant.config import get_settings
 from table_sales_assistant.leads.repository import JSONLeadRepository
 from table_sales_assistant.notifications.telegram_notifier import TelegramManagerNotifier
+from table_sales_assistant.observability import log_dialogue_event
 from table_sales_assistant.services.explanation_service import ExplanationService
 from table_sales_assistant.services.faq_service import FAQService
 from table_sales_assistant.services.lead_service import LeadService
@@ -80,6 +81,14 @@ last_recommendation_context: dict[int, dict[str, object]] = {}
 dialogue_context_store: dict[int, DialogueContext] = {}
 
 
+def _user_id(message: Message) -> int | None:
+    return message.from_user.id if message.from_user else None
+
+
+def _bot_id(message: Message) -> int | None:
+    return message.bot.id if message.bot else None
+
+
 def _normalize_text(value: str | None) -> str:
     return (value or "").strip().lower()
 
@@ -103,8 +112,29 @@ def _build_recommendation_context(data: Mapping[str, object]) -> dict[str, objec
 
 @router.message(CommandStart())
 async def start_handler(message: Message) -> None:
+    log_dialogue_event(
+        phase="handler_enter",
+        function_name="start_handler",
+        user_id=_user_id(message),
+        question=message.text,
+        bot_id=_bot_id(message),
+    )
     await message.answer(WELCOME_TEXT, reply_markup=main_menu_keyboard())
+    log_dialogue_event(
+        phase="bot_answer",
+        function_name="start_handler",
+        user_id=_user_id(message),
+        answer=WELCOME_TEXT,
+        bot_id=_bot_id(message),
+    )
     await message.answer(MENU_TEXT)
+    log_dialogue_event(
+        phase="bot_answer",
+        function_name="start_handler",
+        user_id=_user_id(message),
+        answer=MENU_TEXT,
+        bot_id=_bot_id(message),
+    )
 
 
 @router.message(F.text == "Демо-режим")
@@ -156,6 +186,13 @@ async def recommendation_monitors(message: Message, state: FSMContext) -> None:
 
 @router.message(RecommendationStates.use_case)
 async def recommendation_use_case(message: Message, state: FSMContext) -> None:
+    log_dialogue_event(
+        phase="handler_enter",
+        function_name="recommendation_use_case",
+        user_id=_user_id(message),
+        question=message.text,
+        bot_id=_bot_id(message),
+    )
     await state.update_data(use_case=_map_use_case(message.text))
     raw_data = await state.get_data()
     query = RecommendationQuery(
@@ -168,6 +205,13 @@ async def recommendation_use_case(message: Message, state: FSMContext) -> None:
     products = recommendation_service.get_recommendations(query)
     if not products:
         await message.answer(NO_PRODUCTS_TEXT, reply_markup=main_menu_keyboard())
+        log_dialogue_event(
+            phase="bot_answer",
+            function_name="recommendation_use_case",
+            user_id=_user_id(message),
+            answer=NO_PRODUCTS_TEXT,
+            bot_id=_bot_id(message),
+        )
         await state.clear()
         return
 
@@ -182,6 +226,13 @@ async def recommendation_use_case(message: Message, state: FSMContext) -> None:
             f"Ссылка: {product.product_url}\n"
             f"Комментарий: {explanation}"
         )
+        log_dialogue_event(
+            phase="bot_answer",
+            function_name="recommendation_use_case",
+            user_id=_user_id(message),
+            answer=f"recommendation_item:{product.id}",
+            bot_id=_bot_id(message),
+        )
     await state.update_data(recommended_products=[p.id for p in products])
     updated_data = await state.get_data()
     if message.from_user:
@@ -191,6 +242,14 @@ async def recommendation_use_case(message: Message, state: FSMContext) -> None:
     await message.answer(
         "Рекомендации готовы. Можно оставить заявку по этим вариантам.",
         reply_markup=recommendation_ready_keyboard(),
+    )
+    log_dialogue_event(
+        phase="bot_answer",
+        function_name="recommendation_use_case",
+        user_id=_user_id(message),
+        answer="Рекомендации готовы. Можно оставить заявку по этим вариантам.",
+        bot_id=_bot_id(message),
+        extra={"recommended_products": [p.id for p in products]},
     )
     await state.clear()
 
@@ -203,12 +262,33 @@ async def start_faq_flow(message: Message, state: FSMContext) -> None:
 
 @router.message(FAQStates.waiting_question)
 async def faq_answer(message: Message, state: FSMContext) -> None:
+    log_dialogue_event(
+        phase="handler_enter",
+        function_name="faq_answer",
+        user_id=_user_id(message),
+        question=message.text,
+        bot_id=_bot_id(message),
+    )
     answer = faq_service.answer((message.text or "").strip())
     await state.clear()
     if answer:
         await message.answer(answer, reply_markup=main_menu_keyboard())
+        log_dialogue_event(
+            phase="bot_answer",
+            function_name="faq_answer",
+            user_id=_user_id(message),
+            answer=answer,
+            bot_id=_bot_id(message),
+        )
         return
     await message.answer(FAQ_NO_HITS_TEXT, reply_markup=main_menu_keyboard())
+    log_dialogue_event(
+        phase="bot_answer",
+        function_name="faq_answer",
+        user_id=_user_id(message),
+        answer=FAQ_NO_HITS_TEXT,
+        bot_id=_bot_id(message),
+    )
 
 
 @router.message(F.text == "Оставить заявку")
@@ -336,6 +416,13 @@ async def lead_assembly(message: Message, state: FSMContext) -> None:
 
 @router.message(LeadCollectionStates.comment)
 async def lead_comment(message: Message, state: FSMContext) -> None:
+    log_dialogue_event(
+        phase="handler_enter",
+        function_name="lead_comment",
+        user_id=_user_id(message),
+        question=message.text,
+        bot_id=_bot_id(message),
+    )
     data = await state.get_data()
     data["comment"] = (message.text or "").strip()
     if message.from_user:
@@ -354,8 +441,23 @@ async def lead_comment(message: Message, state: FSMContext) -> None:
         lead_repository.save(lead)
         await manager_notifier.notify(message.bot, lead)
         await message.answer(LEAD_SAVED_TEXT, reply_markup=main_menu_keyboard())
+        log_dialogue_event(
+            phase="lead_saved",
+            function_name="lead_comment",
+            user_id=_user_id(message),
+            answer=LEAD_SAVED_TEXT,
+            lead_id=lead.id,
+            bot_id=_bot_id(message),
+        )
     except Exception:
         await message.answer(GENERIC_ERROR_TEXT, reply_markup=main_menu_keyboard())
+        log_dialogue_event(
+            phase="lead_save_error",
+            function_name="lead_comment",
+            user_id=_user_id(message),
+            answer=GENERIC_ERROR_TEXT,
+            bot_id=_bot_id(message),
+        )
     finally:
         if message.from_user:
             last_recommendation_context.pop(message.from_user.id, None)
@@ -449,10 +551,26 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
         dialogue_context_store[user_id] = context
 
     response = dialogue_service.handle(message.text or "", context)
+    log_dialogue_event(
+        phase="dialogue_processed",
+        function_name="free_text_dialogue",
+        user_id=user_id,
+        question=message.text,
+        answer=response.text,
+        bot_id=_bot_id(message),
+        extra={"intent": response.intent, "goal": response.goal},
+    )
     if response.reset_context:
         dialogue_context_store.pop(user_id, None)
         last_recommendation_context.pop(user_id, None)
         await message.answer(response.text, reply_markup=main_menu_keyboard())
+        log_dialogue_event(
+            phase="bot_answer",
+            function_name="free_text_dialogue",
+            user_id=user_id,
+            answer=response.text,
+            bot_id=_bot_id(message),
+        )
         return
     if response.start_lead_flow:
         await state.update_data(
@@ -465,6 +583,13 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
             lead_short_flow=True,
         )
         await message.answer(response.text)
+        log_dialogue_event(
+            phase="bot_answer",
+            function_name="free_text_dialogue",
+            user_id=user_id,
+            answer=response.text,
+            bot_id=_bot_id(message),
+        )
         await state.set_state(LeadCollectionStates.name)
         return
 
@@ -477,5 +602,20 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
             "recommended_products": context.recommended_products,
         }
         await message.answer(response.text, reply_markup=recommendation_ready_keyboard())
+        log_dialogue_event(
+            phase="bot_answer",
+            function_name="free_text_dialogue",
+            user_id=user_id,
+            answer=response.text,
+            bot_id=_bot_id(message),
+            extra={"recommended_products": context.recommended_products},
+        )
         return
     await message.answer(response.text, reply_markup=main_menu_keyboard())
+    log_dialogue_event(
+        phase="bot_answer",
+        function_name="free_text_dialogue",
+        user_id=user_id,
+        answer=response.text,
+        bot_id=_bot_id(message),
+    )
