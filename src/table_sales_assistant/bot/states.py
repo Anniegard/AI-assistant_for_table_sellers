@@ -6,7 +6,6 @@ class RecommendationStates(StatesGroup):
     user_height = State()
     monitors_count = State()
     use_case = State()
-    motors = State()
 
 
 class FAQStates(StatesGroup):

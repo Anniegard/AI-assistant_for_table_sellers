@@ -11,7 +11,6 @@ from table_sales_assistant.bot.messages import (
     ASK_BUDGET_TEXT,
     ASK_HEIGHT_TEXT,
     ASK_MONITORS_TEXT,
-    ASK_MOTORS_TEXT,
     ASK_USE_CASE_TEXT,
     DEMO_MODE_TEXT,
     FAQ_NO_HITS_TEXT,
@@ -149,24 +148,13 @@ async def recommendation_monitors(message: Message, state: FSMContext) -> None:
 @router.message(RecommendationStates.use_case)
 async def recommendation_use_case(message: Message, state: FSMContext) -> None:
     await state.update_data(use_case=_map_use_case(message.text))
-    await state.set_state(RecommendationStates.motors)
-    await message.answer(ASK_MOTORS_TEXT)
-
-
-@router.message(RecommendationStates.motors)
-async def recommendation_motors(message: Message, state: FSMContext) -> None:
-    try:
-        motors = int((message.text or "").strip())
-    except ValueError:
-        await message.answer(ASK_MOTORS_TEXT)
-        return
     raw_data = await state.get_data()
     query = RecommendationQuery(
         budget=raw_data.get("budget"),
         user_height_cm=raw_data.get("user_height"),
         monitors_count=raw_data.get("monitors_count"),
         use_case=raw_data.get("use_case"),
-        motors_preference=motors if motors > 0 else None,
+        motors_preference=None,
     )
     products = recommendation_service.get_recommendations(query)
     if not products:
