@@ -1,8 +1,5 @@
 from table_sales_assistant.ai.client import OpenAIClient
-from table_sales_assistant.ai.prompts import (
-    RECOMMENDATION_EXPLANATION_PROMPT,
-    SALES_CONSULTANT_SYSTEM_PROMPT,
-)
+from table_sales_assistant.assistant.prompts import ERGO_ASSISTANT_SYSTEM_PROMPT
 from table_sales_assistant.catalog.models import Product
 
 
@@ -32,10 +29,10 @@ class ExplanationService:
                 user_prompt = (
                     f"Контекст запроса: {query_context}\n"
                     f"Товар: {product.model_dump()}\n"
-                    "Объясни, почему этот вариант подходит. Не выдумывай новые товары."
+                    "Объясни, почему этот вариант подходит. Не выдумывай новые товары и свойства."
                 )
                 ai_text = self.ai_client.simple_chat(
-                    system_prompt=f"{SALES_CONSULTANT_SYSTEM_PROMPT}\n{RECOMMENDATION_EXPLANATION_PROMPT}",
+                    system_prompt=ERGO_ASSISTANT_SYSTEM_PROMPT,
                     user_prompt=user_prompt,
                 )
                 explanations[product.id] = ai_text or fallback

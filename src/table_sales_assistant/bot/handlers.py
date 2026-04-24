@@ -6,12 +6,15 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from table_sales_assistant.ai.client import OpenAIClient
+from table_sales_assistant.assistant.dialogue_service import DialogueService
+from table_sales_assistant.assistant.models import DialogueContext, KnownClientParams
 from table_sales_assistant.bot.keyboards import main_menu_keyboard, recommendation_ready_keyboard
 from table_sales_assistant.bot.messages import (
     ASK_BUDGET_TEXT,
     ASK_HEIGHT_TEXT,
     ASK_MONITORS_TEXT,
     ASK_USE_CASE_TEXT,
+    ASSISTANT_RESET_TEXT,
     DEMO_MODE_TEXT,
     FAQ_NO_HITS_TEXT,
     FAQ_PROMPT_TEXT,
@@ -53,6 +56,11 @@ recommendation_service = RecommendationService(
 )
 faq_service = FAQService(settings.knowledge_dir)
 explanation_service = ExplanationService(OpenAIClient(settings.OPENAI_API_KEY))
+dialogue_service = DialogueService(
+    recommendation_service=recommendation_service,
+    faq_service=faq_service,
+    explanation_service=explanation_service,
+)
 lead_repository = JSONLeadRepository(settings.leads_path)
 lead_service = LeadService()
 manager_notifier = TelegramManagerNotifier(settings.MANAGER_TELEGRAM_CHAT_ID)
@@ -69,6 +77,7 @@ USE_CASE_MAP = {
 }
 
 last_recommendation_context: dict[int, dict[str, object]] = {}
+dialogue_context_store: dict[int, DialogueContext] = {}
 
 
 def _normalize_text(value: str | None) -> str:
@@ -186,7 +195,7 @@ async def recommendation_use_case(message: Message, state: FSMContext) -> None:
     await state.clear()
 
 
-@router.message(F.text == "Частые вопросы")
+@router.message(F.text == "Задать вопрос")
 async def start_faq_flow(message: Message, state: FSMContext) -> None:
     await state.set_state(FAQStates.waiting_question)
     await message.answer(FAQ_PROMPT_TEXT)
@@ -329,6 +338,17 @@ async def lead_assembly(message: Message, state: FSMContext) -> None:
 async def lead_comment(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     data["comment"] = (message.text or "").strip()
+    if message.from_user:
+        context = dialogue_context_store.get(message.from_user.id)
+        if context:
+            data["recent_questions"] = context.recent_questions[-5:]
+            data["selected_product_id"] = (
+                context.recommended_products[0] if context.recommended_products else None
+            )
+            data["assistant_comment"] = (
+                "Пользователь прошел консультацию в боте, "
+                "рекомендуем уточнить финальную конфигурацию и сроки."
+            )
     try:
         lead = lead_service.build_lead(data)
         lead_repository.save(lead)
@@ -339,4 +359,123 @@ async def lead_comment(message: Message, state: FSMContext) -> None:
     finally:
         if message.from_user:
             last_recommendation_context.pop(message.from_user.id, None)
+            dialogue_context_store.pop(message.from_user.id, None)
         await state.clear()
+
+
+@router.message(F.text == "Начать заново")
+async def restart_dialogue(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    if message.from_user:
+        last_recommendation_context.pop(message.from_user.id, None)
+        dialogue_context_store.pop(message.from_user.id, None)
+    await message.answer(ASSISTANT_RESET_TEXT, reply_markup=main_menu_keyboard())
+
+
+@router.message(F.text == "Отмена")
+async def cancel_dialogue(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer(
+        "Действие отменено. Могу продолжить подбор, сравнение или оформить заявку.",
+        reply_markup=main_menu_keyboard(),
+    )
+
+
+@router.message(F.text == "Позвать менеджера")
+async def handoff_to_manager(message: Message, state: FSMContext) -> None:
+    await start_lead_flow(message, state)
+
+
+@router.message(F.text == "Сравнить варианты")
+async def compare_variants(message: Message) -> None:
+    if not message.from_user:
+        return
+    context = dialogue_context_store.get(message.from_user.id)
+    if not context or not context.recommended_products:
+        await message.answer(
+            "Сначала подберем варианты. Напишите параметры: рост, бюджет, мониторы.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
+    ids = ", ".join(context.recommended_products)
+    await message.answer(
+        f"Сравнение по последней подборке ({ids}):\n"
+        "- устойчивость: лучше модели с 2 моторами\n"
+        "- нагрузка: для тяжелого сетапа ориентируйтесь на 100+ кг\n"
+        "- цена: можно сместиться в бюджетный сегмент, если уменьшить размер столешницы",
+        reply_markup=recommendation_ready_keyboard(),
+    )
+
+
+@router.message(F.text == "Почему этот стол?")
+async def explain_choice(message: Message) -> None:
+    if not message.from_user:
+        return
+    context = dialogue_context_store.get(message.from_user.id)
+    if not context or not context.recommended_products:
+        await message.answer(
+            "Пока нет выбранного варианта. Могу подобрать 2-3 модели и объяснить разницу."
+        )
+        return
+    await message.answer(
+        "Выбранный вариант обычно лучше по стабильности, "
+        "диапазону высот и нагрузке под ваш сценарий. "
+        "Если хотите, предложу более бюджетную альтернативу.",
+        reply_markup=recommendation_ready_keyboard(),
+    )
+
+
+@router.message(F.text == "Есть дешевле?")
+async def cheaper_option(message: Message) -> None:
+    await message.answer(
+        "Есть более бюджетные модели. "
+        "Уточните минимально допустимый размер и количество мониторов, "
+        "и я пересчитаю подбор.",
+        reply_markup=main_menu_keyboard(),
+    )
+
+
+@router.message(F.text)
+async def free_text_dialogue(message: Message, state: FSMContext) -> None:
+    if not message.from_user:
+        return
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
+    user_id = message.from_user.id
+    context = dialogue_context_store.get(user_id)
+    if context is None:
+        context = DialogueContext(user_id=user_id, known_params=KnownClientParams())
+        dialogue_context_store[user_id] = context
+
+    response = dialogue_service.handle(message.text or "", context)
+    if response.reset_context:
+        dialogue_context_store.pop(user_id, None)
+        last_recommendation_context.pop(user_id, None)
+        await message.answer(response.text, reply_markup=main_menu_keyboard())
+        return
+    if response.start_lead_flow:
+        await state.update_data(
+            budget=context.known_params.budget_max,
+            height_cm=context.known_params.height_cm,
+            monitors_count=context.known_params.monitors_count,
+            use_case=context.known_params.use_case,
+            has_pc_case=context.known_params.has_pc_case,
+            recommended_products=context.recommended_products,
+            lead_short_flow=True,
+        )
+        await message.answer(response.text)
+        await state.set_state(LeadCollectionStates.name)
+        return
+
+    if context.recommended_products:
+        last_recommendation_context[user_id] = {
+            "budget": context.known_params.budget_max,
+            "height_cm": context.known_params.height_cm,
+            "monitors_count": context.known_params.monitors_count,
+            "use_case": context.known_params.use_case,
+            "recommended_products": context.recommended_products,
+        }
+        await message.answer(response.text, reply_markup=recommendation_ready_keyboard())
+        return
+    await message.answer(response.text, reply_markup=main_menu_keyboard())

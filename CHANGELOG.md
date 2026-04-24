@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0] - 2026-04-24
+
+- Introduced `ЭргоАссистент` business layer (`assistant`) with intent routing, free-text parameter extraction, and dialogue orchestration decoupled from Telegram handlers.
+- Upgraded catalog recommendation to hard-filter + soft-scoring output (`fit_score`, reasons, tradeoffs, best-for) and wired ranked recommendations into dialogue responses.
+- Expanded Telegram UX with conversational quick actions (`Задать вопрос`, `Сравнить варианты`, `Почему этот стол?`, `Есть дешевле?`, `Позвать менеджера`, reset/cancel flows).
+- Enhanced lead handoff payload for manager with recent user questions, selected recommendation, and assistant comment.
+- Updated README/architecture docs and added focused tests for intents, dialogue free-text handling, scoring, fallback without OpenAI, no-hallucination guard, and handoff summary.
+
 ## [0.2.1] - 2026-04-24
 
 - QA hardening before client demo: improved Telegram flow stability and clearer startup error when `TELEGRAM_BOT_TOKEN` is missing.

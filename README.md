@@ -1,6 +1,6 @@
 # AI-assistant for table sellers
 
-Демо Telegram-бот AI sales assistant для продавцов регулируемых по высоте столов.
+Демо Telegram-бот с сущностью `ЭргоАссистент`: разговорный AI sales assistant для продавцов регулируемых по высоте столов.
 
 ## Business value
 
@@ -11,27 +11,33 @@
 
 ## Что показывает демо
 
-1. Подбор стола по бюджету, росту, мониторам, сценарию и моторам.
-2. FAQ-ответы на базе markdown knowledge.
-3. AI-объяснение уже выбранных deterministic рекомендаций.
-4. Сбор заявки и локальное сохранение в JSON.
-5. Отправку заявки менеджеру в Telegram при заданном chat id.
+1. Разговорный подбор по свободному тексту и кнопкам.
+2. Intent routing: подбор, вопросы, сравнение, возражения по цене, заявка.
+3. Scoring-рекомендации 2-3 вариантов (fit score, reasons, tradeoffs).
+4. FAQ-ответы на базе markdown knowledge.
+5. AI-объяснение только catalog-backed рекомендаций.
+6. Сбор заявки и расширенное резюме для менеджера.
 
 ## Ограничения демо
 
 - Все товары и лиды в репозитории: sample data.
 - Нет обещаний по реальным срокам, остаткам и финальной цене.
 - Без `OPENAI_API_KEY` проект работает в offline/demo режиме.
+- Это MVP: без CRM, web-widget и production RAG.
 
 ## Архитектура
 
-- `bot`: Telegram handlers и FSM-состояния.
-- `catalog`: структура товаров и deterministic filtering.
+- `bot`: Telegram transport слой и FSM-состояния.
+- `assistant`: persona, intent routing, dialogue service, response builder.
+- `catalog`: структура товаров и scoring recommender.
 - `knowledge`: загрузка markdown и keyword search.
-- `ai`: клиент OpenAI и промпты объяснений.
-- `services`: orchestration рекомендаций, FAQ, лидов.
+- `ai`: клиент OpenAI.
+- `services`: рекомендации, объяснения, FAQ, лиды.
 - `leads`: модель и JSON repository.
 - `notifications`: форматирование лида и отправка менеджеру.
+
+Поток запроса:
+`Telegram -> DialogueService -> Catalog/Recommender/Knowledge -> AI Explanation -> LeadService -> Manager Notification`.
 
 ## Быстрый запуск
 
@@ -63,11 +69,21 @@ python -m table_sales_assistant.main
 ## Demo journey
 
 - Запустить бота.
-- Пройти `/start`.
-- Выбрать подбор стола и получить 2-3 рекомендации.
-- Задать FAQ-вопрос.
-- Оставить заявку и проверить JSON файл лидов.
+- Написать: `Мне нужен стол для дома, рост 185, два монитора, бюджет 60-80 тысяч`.
+- Получить 2-3 рекомендации и объяснение.
+- Спросить: `Почему два мотора лучше?` или `Есть дешевле?`.
+- Написать: `Оставь заявку`.
+- Проверить JSON файл лидов и уведомление менеджеру.
 - Проверить отправку менеджеру при заданном `MANAGER_TELEGRAM_CHAT_ID`.
+
+## Пример диалога
+
+- Пользователь: `Мне нужен стол для дома, рост 185, два монитора, бюджет до 70к`
+- ЭргоАссистент: `Подобрал 3 варианта из каталога ... Хотите, сравню по устойчивости и нагрузке?`
+- Пользователь: `Почему не один мотор?`
+- ЭргоАссистент: `Для двух мониторов и системного блока два мотора дают лучший запас стабильности...`
+- Пользователь: `Оставь заявку`
+- ЭргоАссистент: `Отлично, как вас зовут?`
 
 ## Документация
 
@@ -89,4 +105,3 @@ python -m table_sales_assistant.main
 
 This project is source-available. Commercial use is prohibited without prior
 written permission from the author. See `LICENSE` for full terms.
-

@@ -5,7 +5,16 @@ from table_sales_assistant.bot.router_factory import build_main_router
 def test_main_menu_contains_required_buttons() -> None:
     keyboard = main_menu_keyboard()
     labels = [button.text for row in keyboard.keyboard for button in row]
-    assert labels == ["Подобрать стол", "Частые вопросы", "Оставить заявку", "Демо-режим"]
+    assert labels == [
+        "Подобрать стол",
+        "Задать вопрос",
+        "Сравнить варианты",
+        "Оставить заявку",
+        "Позвать менеджера",
+        "Начать заново",
+        "Отмена",
+        "Демо-режим",
+    ]
 
 
 def test_router_factory_returns_router() -> None:

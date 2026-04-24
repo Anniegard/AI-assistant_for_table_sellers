@@ -41,6 +41,13 @@ class LeadService:
                 else None
             ),
             recommended_products=list(data.get("recommended_products", [])),
+            recent_questions=list(data.get("recent_questions", [])),
+            selected_product_id=(
+                str(data["selected_product_id"]) if data.get("selected_product_id") else None
+            ),
+            assistant_comment=(
+                str(data["assistant_comment"]) if data.get("assistant_comment") else None
+            ),
             comment=None if data.get("comment") in (None, "-", "") else str(data["comment"]),
             source="telegram_demo",
         )

@@ -16,5 +16,8 @@ class Lead(BaseModel):
     needs_delivery: bool | None = None
     needs_assembly: bool | None = None
     recommended_products: list[str] = Field(default_factory=list)
+    recent_questions: list[str] = Field(default_factory=list)
+    selected_product_id: str | None = None
+    assistant_comment: str | None = None
     comment: str | None = None
     source: str = 'telegram'

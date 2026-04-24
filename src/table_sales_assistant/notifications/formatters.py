@@ -15,6 +15,7 @@ def _fmt_optional(value: object | None) -> str:
 
 def format_lead_for_manager(lead: Lead) -> str:
     recommended = ", ".join(lead.recommended_products) if lead.recommended_products else "-"
+    recent_questions = "; ".join(lead.recent_questions) if lead.recent_questions else "-"
     return (
         "Новая заявка из демо-бота\n"
         f"Имя: {lead.name}\n"
@@ -29,6 +30,9 @@ def format_lead_for_manager(lead: Lead) -> str:
         f"Доставка: {_fmt_bool(lead.needs_delivery)}\n"
         f"Сборка: {_fmt_bool(lead.needs_assembly)}\n"
         f"Рекомендации: {recommended}\n"
+        f"Вопросы клиента: {recent_questions}\n"
+        f"Выбранный вариант: {_fmt_optional(lead.selected_product_id)}\n"
+        f"Комментарий ассистента: {_fmt_optional(lead.assistant_comment)}\n"
         f"Комментарий: {_fmt_optional(lead.comment)}\n"
         f"Источник: {lead.source}"
     )
