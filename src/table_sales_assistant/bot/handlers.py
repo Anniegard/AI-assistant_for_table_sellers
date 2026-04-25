@@ -603,6 +603,7 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
         dialogue_context_store[user_id] = context
 
     started = monotonic()
+    explanation_service.reset_usage_tracking()
     try:
         response = dialogue_service.handle(message.text or "", context)
     except Exception as exc:
@@ -613,10 +614,7 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
                 channel="telegram",
                 user_id=user_id,
                 username=message.from_user.username if message.from_user else None,
-                mode=detect_mode(
-                    openai_requested=True,
-                    openai_available=explanation_service.ai_client.is_enabled,
-                ),
+                mode=detect_mode(used_llm=explanation_service.last_response_used_llm),
                 status="error",
                 user_message=message.text,
                 assistant_response=GENERIC_ERROR_TEXT,
@@ -631,13 +629,11 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
         return
 
     mode = detect_mode(
-        provider="openai" if explanation_service.ai_client.is_enabled else None,
-        openai_requested=response.intent.value
-        in {"recommend", "clarify_recommendation", "objection_price"},
-        openai_available=explanation_service.ai_client.is_enabled,
+        provider="openai",
+        used_llm=explanation_service.last_response_used_llm,
     )
     provider = "openai" if mode == "openai" else None
-    model = "gpt-4.1-mini" if mode == "openai" else None
+    model = explanation_service.ai_client.model if mode == "openai" else None
     latency_ms = int((monotonic() - started) * 1000)
     audit_service.log_event(
         audit_service.create_event(

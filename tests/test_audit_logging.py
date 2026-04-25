@@ -98,6 +98,39 @@ def test_export_events_as_json(tmp_path: Path) -> None:
     assert exported[0]["channel"] == "web_api"
 
 
+def test_read_recent_skips_corrupted_jsonl_lines(tmp_path: Path, caplog) -> None:
+    path = tmp_path / "broken_recent.jsonl"
+    path.write_text(
+        '{"conversation_id":"ok-1","channel":"telegram","mode":"offline","status":"success"}\n'
+        "{broken json line}\n"
+        '{"conversation_id":"ok-2","channel":"telegram","mode":"offline","status":"success"}\n',
+        encoding="utf-8",
+    )
+    repository = JSONLDialogueAuditRepository(path)
+
+    with caplog.at_level(logging.WARNING):
+        events = repository.read_recent(limit=10)
+    assert [event.conversation_id for event in events] == ["ok-1", "ok-2"]
+    assert "Skipping corrupted audit JSONL line in read_recent" in caplog.text
+
+
+def test_export_events_skips_corrupted_jsonl_lines(tmp_path: Path, caplog) -> None:
+    path = tmp_path / "broken_export.jsonl"
+    path.write_text(
+        '{"conversation_id":"ok-1","channel":"telegram","mode":"offline","status":"success"}\n'
+        "\n"
+        "{broken json line}\n",
+        encoding="utf-8",
+    )
+    repository = JSONLDialogueAuditRepository(path)
+
+    with caplog.at_level(logging.WARNING):
+        exported = repository.export_events_as_json()
+    assert len(exported) == 1
+    assert exported[0]["conversation_id"] == "ok-1"
+    assert "Skipping corrupted audit JSONL line in export" in caplog.text
+
+
 def test_sanitize_text_masks_phone_and_email() -> None:
     text = "Пиши на ivan@example.com или +7 (999) 123-45-67 по столу."
     sanitized = sanitize_text(text)
@@ -134,8 +167,8 @@ def test_write_error_does_not_crash_application(caplog) -> None:
 
 
 def test_detect_mode_variants() -> None:
-    assert detect_mode(provider="openai") == "openai"
+    assert detect_mode(provider="openai", used_llm=True) == "openai"
     assert detect_mode(provider="yandex_ai") == "yandex_ai"
-    assert detect_mode(openai_requested=True, openai_available=False) == "offline"
-    assert detect_mode(openai_requested=False, openai_available=False) == "unknown"
+    assert detect_mode(used_llm=False) == "offline"
+    assert detect_mode(used_llm=None) == "unknown"
 

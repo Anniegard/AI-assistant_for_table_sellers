@@ -10,6 +10,14 @@ logger = logging.getLogger(__name__)
 class ExplanationService:
     def __init__(self, ai_client: OpenAIClient) -> None:
         self.ai_client = ai_client
+        self._last_response_used_llm: bool | None = None
+
+    @property
+    def last_response_used_llm(self) -> bool | None:
+        return self._last_response_used_llm
+
+    def reset_usage_tracking(self) -> None:
+        self._last_response_used_llm = None
 
     def deterministic_explanation(self, product: Product) -> str:
         category = (product.category or "").strip().lower()
@@ -30,6 +38,7 @@ class ExplanationService:
         products: list[Product],
         query_context: dict[str, object],
     ) -> dict[str, str]:
+        self._last_response_used_llm = False
         explanations: dict[str, str] = {}
         for product in products:
             fallback = self.deterministic_explanation(product)
@@ -49,6 +58,8 @@ class ExplanationService:
                     system_prompt=ERGO_ASSISTANT_SYSTEM_PROMPT,
                     user_prompt=user_prompt,
                 )
+                if ai_text:
+                    self._last_response_used_llm = True
                 explanations[product.id] = ai_text or fallback
             except Exception:
                 logger.exception(

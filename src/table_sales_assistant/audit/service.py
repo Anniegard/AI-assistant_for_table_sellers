@@ -24,20 +24,15 @@ def sanitize_text(value: str | None) -> str | None:
 def detect_mode(
     *,
     provider: str | None = None,
-    openai_requested: bool = False,
-    openai_available: bool = False,
+    used_llm: bool | None = None,
 ) -> DialogueMode:
     provider_normalized = (provider or "").strip().lower()
-    if provider_normalized in {"openai", "gpt"}:
-        return "openai"
     if provider_normalized in {"yandex", "yandex_ai", "yandexgpt"}:
         return "yandex_ai"
-    if openai_requested and openai_available:
+    if used_llm is True and provider_normalized in {"", "openai", "gpt"}:
         return "openai"
-    if openai_requested and not openai_available:
+    if used_llm is False:
         return "offline"
-    if not provider_normalized and not openai_requested:
-        return "unknown"
     return "unknown"
 
 

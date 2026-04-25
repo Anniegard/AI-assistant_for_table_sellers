@@ -9,9 +9,16 @@ logger = logging.getLogger(__name__)
 
 
 class OpenAIClient:
-    def __init__(self, api_key: str | None = None, *, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        *,
+        enabled: bool = True,
+        model: str = "gpt-4.1-mini",
+    ) -> None:
         self.api_key = api_key or ""
         self.enabled = enabled
+        self.model = model
         self._client = OpenAI(api_key=self.api_key) if self.enabled and self.api_key else None
 
     @property
@@ -37,11 +44,11 @@ class OpenAIClient:
             phase="openai_request",
             question=user_prompt,
             function_name="OpenAIClient.simple_chat",
-            extra={"model": "gpt-4.1-mini", "system_prompt_len": len(system_prompt)},
+            extra={"model": self.model, "system_prompt_len": len(system_prompt)},
         )
         try:
             response = self._client.responses.create(
-                model="gpt-4.1-mini",
+                model=self.model,
                 input=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -55,7 +62,7 @@ class OpenAIClient:
                 question=user_prompt,
                 answer=output_text,
                 function_name="OpenAIClient.simple_chat",
-                extra={"model": "gpt-4.1-mini", "latency_ms": elapsed_ms},
+                extra={"model": self.model, "latency_ms": elapsed_ms},
             )
             return output_text
         except Exception as exc:
@@ -66,7 +73,7 @@ class OpenAIClient:
                 question=user_prompt,
                 function_name="OpenAIClient.simple_chat",
                 extra={
-                    "model": "gpt-4.1-mini",
+                    "model": self.model,
                     "latency_ms": elapsed_ms,
                     "error_type": type(exc).__name__,
                 },

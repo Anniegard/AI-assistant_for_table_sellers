@@ -84,6 +84,7 @@ python -m table_sales_assistant.main
 - `TELEGRAM_BOT_TOKEN`
 - `OPENAI_ENABLED` (default: `true`; set `false` for fully local demo mode)
 - `OPENAI_API_KEY` (optional)
+- `OPENAI_MODEL` (default: `gpt-4.1-mini`)
 - `MANAGER_TELEGRAM_CHAT_ID` (optional)
 - `PRODUCTS_PATH`
 - `KNOWLEDGE_DIR`

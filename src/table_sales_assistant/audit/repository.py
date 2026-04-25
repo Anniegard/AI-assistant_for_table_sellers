@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import deque
 from pathlib import Path
 
 from table_sales_assistant.audit.models import DialogueAuditEvent
+
+logger = logging.getLogger(__name__)
 
 
 class JSONLDialogueAuditRepository:
@@ -28,8 +31,11 @@ class JSONLDialogueAuditRepository:
 
         events: list[DialogueAuditEvent] = []
         for line in recent_lines:
-            payload = json.loads(line)
-            events.append(DialogueAuditEvent.model_validate(payload))
+            try:
+                payload = json.loads(line)
+                events.append(DialogueAuditEvent.model_validate(payload))
+            except (json.JSONDecodeError, ValueError) as exc:
+                logger.warning("Skipping corrupted audit JSONL line in read_recent: %s", exc)
         return events
 
     def export_events_as_json(self) -> list[dict]:
@@ -41,6 +47,9 @@ class JSONLDialogueAuditRepository:
                 cleaned = line.strip()
                 if not cleaned:
                     continue
-                exported.append(json.loads(cleaned))
+                try:
+                    exported.append(json.loads(cleaned))
+                except json.JSONDecodeError as exc:
+                    logger.warning("Skipping corrupted audit JSONL line in export: %s", exc)
         return exported
 

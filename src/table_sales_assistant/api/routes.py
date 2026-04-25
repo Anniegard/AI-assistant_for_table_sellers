@@ -60,6 +60,7 @@ def create_demo_router(
         if session is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
         started = monotonic()
+        services.explanation_service.reset_usage_tracking()
         try:
             response = services.dialogue_service.handle(payload.text, session.context)
             summary = session.context.get_context_summary()
@@ -80,10 +81,8 @@ def create_demo_router(
                 summary["recent_dialogue_summary"] if response.start_lead_flow else None
             )
             mode = detect_mode(
-                provider="openai" if services.explanation_service.ai_client.is_enabled else None,
-                openai_requested=response.intent.value
-                in {"recommend", "clarify_recommendation", "objection_price"},
-                openai_available=services.explanation_service.ai_client.is_enabled,
+                provider="openai",
+                used_llm=services.explanation_service.last_response_used_llm,
             )
             services.audit_service.log_event(
                 services.audit_service.create_event(
@@ -91,7 +90,11 @@ def create_demo_router(
                     channel="web_api",
                     mode=mode,
                     provider="openai" if mode == "openai" else None,
-                    model="gpt-4.1-mini" if mode == "openai" else None,
+                    model=(
+                        services.explanation_service.ai_client.model
+                        if mode == "openai"
+                        else None
+                    ),
                     intent=response.intent.value,
                     status="success",
                     user_message=payload.text,
@@ -134,10 +137,7 @@ def create_demo_router(
                 services.audit_service.create_event(
                     conversation_id=session.session_id,
                     channel="web_api",
-                    mode=detect_mode(
-                        openai_requested=True,
-                        openai_available=services.explanation_service.ai_client.is_enabled,
-                    ),
+                    mode=detect_mode(used_llm=services.explanation_service.last_response_used_llm),
                     status="error",
                     user_message=payload.text,
                     assistant_response=fallback_text,

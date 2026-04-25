@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.4] - 2026-04-25
+
+- Fixed audit mode detection to reflect the real response generation path: `openai` only when a concrete reply actually used LLM output, `offline` for rule-based/fallback responses, and `unknown` when usage cannot be determined.
+- Removed hardcoded OpenAI model values from runtime audit integration by introducing `OPENAI_MODEL` config and wiring model selection through `Settings`/`OpenAIClient`.
+- Hardened audit JSONL readers: `read_recent()` and `export_events_as_json()` now skip empty/corrupted lines with warning logs instead of raising, with new regression tests for corrupted JSONL records.
+
 ## [0.4.3] - 2026-04-25
 
 - Added dedicated dialogue audit backend module (`audit`) with structured event model, append-only JSONL repository, and fail-safe service API for `read_recent()` / `export_events_as_json()`.

@@ -59,6 +59,7 @@ def build_app_services(settings: Settings | None = None) -> AppServices:
         OpenAIClient(
             api_key=app_settings.OPENAI_API_KEY,
             enabled=app_settings.OPENAI_ENABLED,
+            model=app_settings.OPENAI_MODEL,
         )
     )
     dialogue_service = DialogueService(

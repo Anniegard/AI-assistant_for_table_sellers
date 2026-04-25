@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     OPENAI_ENABLED: bool = True
     OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4.1-mini"
     MANAGER_TELEGRAM_CHAT_ID: str = ""
     WEB_ALLOWED_ORIGINS: str = "*"
     WEB_HOST: str = "0.0.0.0"
