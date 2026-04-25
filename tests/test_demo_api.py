@@ -77,7 +77,7 @@ def test_demo_messages_openai_disabled_returns_recommendation(tmp_path: Path) ->
             "/api/demo/messages",
             json={
                 "session_id": session_id,
-                "text": "Мне нужен стол до 70000, рост 185, два монитора",
+                "text": "Мне нужен стол до 70000, рост 185, два монитора, только ноутбук, 140x70",
             },
         )
     assert response.status_code == 200
@@ -100,7 +100,10 @@ def test_demo_messages_openai_failure_returns_stable_fallback(tmp_path: Path, mo
         monkeypatch.setattr(openai_client, "simple_chat", _raise_provider_error)
         response = client.post(
             "/api/demo/messages",
-            json={"session_id": session_id, "text": "рост 185 бюджет 70000 два монитора"},
+            json={
+                "session_id": session_id,
+                "text": "рост 185 бюджет 70000 два монитора только ноутбук 140x70",
+            },
         )
     assert response.status_code == 200
     payload = response.json()

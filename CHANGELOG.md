@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.8] - 2026-04-26
+
+- Fixed guided flow predictability: free-text parsing no longer auto-skips monitors/PC/size, so recommendation starts only after explicit answers or explicit skip phrases on those steps.
+- Updated cheaper intent UX: "дешевле" without a budget now asks for a new budget and sets waiting state, while inline/follow-up budget replies recalculate recommendations without restarting the scenario.
+- Expanded regression coverage for guided step order, cheaper follow-up budget flow, parser edge phrases (size/PC/scenario/budget), synced `docs/data_model.md` with actual context model fields, and added manual UX checklist scenarios.
+
 ## [0.4.7] - 2026-04-26
 
 - Reworked recommendation UX to a unified guided flow for Telegram and Web API (`scenario -> height -> budget -> monitors -> pc_on_desk -> size`) with smarter step-aware free-text parsing.

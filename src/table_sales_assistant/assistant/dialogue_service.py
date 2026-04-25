@@ -198,17 +198,6 @@ class DialogueService:
             return
         if kp.use_case is None and pick_desk:
             kp.use_case = "unknown"
-        if kp.monitors_count is None and not kp.monitors_unspecified:
-            kp.monitors_unspecified = True
-        if kp.has_pc_case is None and not kp.pc_unspecified:
-            kp.pc_unspecified = True
-        if (
-            not kp.no_size_limit
-            and kp.max_width_cm is None
-            and kp.preferred_width_cm is None
-            and not kp.size_unspecified
-        ):
-            kp.size_unspecified = True
 
     def _update_context_from_text(self, text: str, context: DialogueContext) -> None:
         missing = _first_missing_collection_step(context.known_params)
@@ -230,17 +219,6 @@ class DialogueService:
             return
         if kp.use_case is None:
             kp.use_case = "unknown"
-        if kp.monitors_count is None and not kp.monitors_unspecified:
-            kp.monitors_unspecified = True
-        if kp.has_pc_case is None and not kp.pc_unspecified:
-            kp.pc_unspecified = True
-        if (
-            not kp.no_size_limit
-            and kp.max_width_cm is None
-            and kp.preferred_width_cm is None
-            and not kp.size_unspecified
-        ):
-            kp.size_unspecified = True
 
     def _missing_legacy_budget_height(self, context: DialogueContext) -> list[str]:
         missing: list[str] = []
@@ -438,71 +416,11 @@ class DialogueService:
             context.awaiting_budget_after_cheaper = False
             return self._rerun_recommendation(context, intent)
 
-        if not context.recommended_products:
-            return ResponseBuilder.plain(
-                "В каком бюджете теперь смотреть? Например: до 50 000 ₽ или 40–60к.",
-                goal=AssistantGoal.ASK_MISSING_PARAM,
-                intent=intent,
-            )
-
-        previous_products = self.recommendation_service.get_products_by_ids(
-            context.recommended_products
-        )
-        previous_desks = [
-            product for product in previous_products if not self._is_accessory(product.category)
-        ]
-        if not previous_desks:
-            return ResponseBuilder.plain(
-                "Пока нет предыдущей подборки столов. "
-                "Напишите рост и бюджет, и я пересчитаю варианты.",
-                goal=AssistantGoal.ASK_MISSING_PARAM,
-                intent=intent,
-            )
-        previous_min_price = min(product.price for product in previous_desks)
-        reduced_budget = int((context.known_params.budget_max or previous_min_price) * 0.8)
-        target_max_price = min(previous_min_price - 1, reduced_budget)
-        if target_max_price <= 0:
-            target_max_price = previous_min_price - 1
-        query = self._build_recommendation_query(context)
-        query.max_price_override = target_max_price
-        query.exclude_product_ids = set(context.recommended_products)
-        ranked = self.recommendation_service.get_ranked_recommendations(query)
-        ranked = [
-            item
-            for item in ranked
-            if item.product.price < previous_min_price
-            and item.product.id not in set(context.recommended_products)
-        ]
-        if not ranked:
-            return ResponseBuilder.with_cta(
-                (
-                    "Дешевле подходящих регулируемых столов в каталоге сейчас нет. "
-                    "Самый близкий бюджетный вариант уже в последней подборке. "
-                    "Можно снизить цену за счёт одного мотора или меньшей столешницы."
-                ),
-                goal=AssistantGoal.HANDLE_OBJECTION,
-                intent=intent,
-                cta="Сравнить варианты",
-            )
-        context.recommended_products = [item.product.id for item in ranked]
-        explanations = self.explanation_service.explain_products(
-            [item.product for item in ranked],
-            query_context=self._sanitize_query_context(query),
-        )
-        cheaper_intro = (
-            f"Посмотрел варианты дешевле. В каталоге есть столы до {target_max_price:,} ₽."
-        ).replace(",", " ")
-        text = self._format_main_recommendation_text(
-            context,
-            ranked,
-            explanations,
-            cheaper_intro=cheaper_intro,
-        )
-        return ResponseBuilder.with_cta(
-            text,
-            goal=AssistantGoal.RECOMMEND,
+        context.awaiting_budget_after_cheaper = True
+        return ResponseBuilder.plain(
+            "В каком бюджете теперь смотреть? Например: до 50 000 ₽ или 40-60к.",
+            goal=AssistantGoal.ASK_MISSING_PARAM,
             intent=intent,
-            cta="Сравнить варианты",
         )
 
     def _rerun_recommendation(
@@ -683,6 +601,31 @@ class DialogueService:
         self._update_context_from_text(text, context)
         intent = self.intent_router.route(text)
         intent = self._post_rec_intent_override(text, intent, context)
+
+        if context.awaiting_budget_after_cheaper and intent not in (
+            DialogueIntent.RESTART,
+            DialogueIntent.LEAVE_LEAD,
+            DialogueIntent.HANDOFF_MANAGER,
+        ):
+            bm, bx, _ = parse_budget_from_text(text)
+            if bm is not None:
+                context.known_params.budget_min = bm
+            if bx is not None:
+                context.known_params.budget_max = bx
+            if bm is not None or bx is not None:
+                context.awaiting_budget_after_cheaper = False
+                return self._with_history(
+                    context,
+                    self._rerun_recommendation(context, DialogueIntent.CHANGE_BUDGET),
+                )
+            return self._with_history(
+                context,
+                ResponseBuilder.plain(
+                    "В каком бюджете теперь смотреть? Например: до 50 000 ₽ или 40-60к.",
+                    goal=AssistantGoal.ASK_MISSING_PARAM,
+                    intent=DialogueIntent.OBJECTION_PRICE,
+                ),
+            )
 
         if intent == DialogueIntent.RESTART:
             self._reset_session(context)

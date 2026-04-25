@@ -3,6 +3,8 @@ import pytest
 from table_sales_assistant.assistant.free_text_parser import (
     ACTIVE_STEP_BUDGET,
     ACTIVE_STEP_HEIGHT,
+    ACTIVE_STEP_SIZE,
+    is_dismissal_reply,
     parse_budget_from_text,
     parse_signals,
 )
@@ -62,3 +64,34 @@ def test_parse_scenario_russian() -> None:
     assert parse_signals("для игр", active_step=None).internal_scenario == "gaming"
     assert parse_signals("для офиса", active_step=None).internal_scenario == "office"
     assert parse_signals("для учебы", active_step=None).internal_scenario == "study"
+
+
+def test_parse_max_width_phrase() -> None:
+    s = parse_signals("места максимум 120", active_step=None)
+    assert s.max_width_cm == 120
+
+
+def test_parse_no_size_limit_phrase() -> None:
+    s = parse_signals("без ограничений", active_step=ACTIVE_STEP_SIZE)
+    assert s.no_size_limit is True
+
+
+def test_dismissal_reply_for_size_question() -> None:
+    assert is_dismissal_reply("не знаю") is True
+
+
+def test_parse_pc_negative_phrases() -> None:
+    s = parse_signals("системный блок не будет стоять на столе", active_step=None)
+    assert s.has_pc_on_table is False
+    s2 = parse_signals("только ноутбук", active_step=None)
+    assert s2.has_pc_on_table is False
+
+
+def test_parse_contextual_scenarios() -> None:
+    assert parse_signals("вообще это для игр", active_step=None).internal_scenario == "gaming"
+    assert parse_signals("для офиса", active_step=None).internal_scenario == "office"
+
+
+def test_parse_budget_for_cheaper_context() -> None:
+    s = parse_signals("до 60к", active_step=ACTIVE_STEP_BUDGET)
+    assert s.budget_max == 60000

@@ -266,7 +266,7 @@ def parse_desktop_size_cm(text: str) -> tuple[int | None, int | None]:
 def parse_max_width_hint(text: str) -> int | None:
     lowered = text.lower()
     m = re.search(
-        r"(?:места\s*максимум|максимум|не\s*шире|до\s*ширины|ширин\w*\D{0,8})(\d{2,3})\s*(?:см)?",
+        r"(?:места\s*максимум|максимум|не\s*шире|до\s*ширины|ширин\w*)\D{0,8}(\d{2,3})\s*(?:см)?",
         lowered,
     )
     if m:
