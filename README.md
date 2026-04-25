@@ -58,6 +58,9 @@ python -m table_sales_assistant.main
 
 Ключевые переменные:
 
+- `ENABLE_TELEGRAM` (default: `true`)
+- `ENABLE_WEB_API` (default: `false`)
+- `WEB_ALLOWED_ORIGINS` (comma-separated origins or `*`)
 - `TELEGRAM_BOT_TOKEN`
 - `OPENAI_API_KEY` (optional)
 - `MANAGER_TELEGRAM_CHAT_ID` (optional)
@@ -65,6 +68,55 @@ python -m table_sales_assistant.main
 - `KNOWLEDGE_DIR`
 - `LEADS_PATH`
 - `LOG_LEVEL`
+
+## Запуск транспортов
+
+Telegram transport (как раньше):
+
+```bash
+python -m table_sales_assistant.main
+```
+
+Web API transport (FastAPI demo):
+
+```bash
+python -m table_sales_assistant.main_api
+```
+
+Рекомендуемые флаги в `.env`:
+
+```env
+ENABLE_TELEGRAM=false
+ENABLE_WEB_API=true
+WEB_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+```
+
+## Web API demo endpoints
+
+- `GET /api/demo/health`
+- `POST /api/demo/sessions`
+- `POST /api/demo/messages`
+- `POST /api/demo/leads`
+
+Пример сессии:
+
+```bash
+curl -X POST http://localhost:8000/api/demo/sessions
+```
+
+```bash
+curl -X POST http://localhost:8000/api/demo/messages ^
+  -H "Content-Type: application/json" ^
+  -d "{\"session_id\":\"web-...\",\"text\":\"рост 190 бюджет 50000 для дома\"}"
+```
+
+```bash
+curl -X POST http://localhost:8000/api/demo/leads ^
+  -H "Content-Type: application/json" ^
+  -d "{\"session_id\":\"web-...\",\"name\":\"Иван\",\"phone\":\"+79991234567\",\"city\":\"Москва\"}"
+```
+
+Важно: OpenAI ключ остается только на backend стороне (env/config) и не передается во frontend.
 
 ## Demo journey
 

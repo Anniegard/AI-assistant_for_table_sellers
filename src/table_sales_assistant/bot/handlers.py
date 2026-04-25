@@ -5,8 +5,7 @@ from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from table_sales_assistant.ai.client import OpenAIClient
-from table_sales_assistant.assistant.dialogue_service import DialogueService
+from table_sales_assistant.app_factory import build_app_services
 from table_sales_assistant.assistant.models import DialogueContext, KnownClientParams
 from table_sales_assistant.bot.keyboards import main_menu_keyboard, recommendation_ready_keyboard
 from table_sales_assistant.bot.messages import (
@@ -38,56 +37,18 @@ from table_sales_assistant.bot.messages import (
     WELCOME_TEXT,
 )
 from table_sales_assistant.bot.states import FAQStates, LeadCollectionStates, RecommendationStates
-from table_sales_assistant.catalog.recommender import ProductRecommender, RecommendationQuery
-from table_sales_assistant.catalog.repository import ProductRepository
-from table_sales_assistant.catalog.sqlite_repository import SQLiteCatalogRepository
-from table_sales_assistant.config import get_settings
-from table_sales_assistant.leads.repository import JSONLeadRepository
-from table_sales_assistant.notifications.telegram_notifier import TelegramManagerNotifier
+from table_sales_assistant.catalog.recommender import RecommendationQuery
 from table_sales_assistant.observability import log_dialogue_event
-from table_sales_assistant.services.explanation_service import ExplanationService
-from table_sales_assistant.services.faq_service import FAQService
-from table_sales_assistant.services.lead_service import LeadService
-from table_sales_assistant.services.recommendation_service import RecommendationService
 
 router = Router()
-settings = get_settings()
-
-
-def _build_catalog_repository():
-    if settings.catalog_backend == "sqlite":
-        if not settings.catalog_db_path.exists():
-            raise FileNotFoundError(
-                f"CATALOG_BACKEND=sqlite but DB does not exist: {settings.catalog_db_path}"
-            )
-        return SQLiteCatalogRepository(settings.catalog_db_path)
-    return ProductRepository(settings.products_path)
-
-
-def _build_faq_service() -> FAQService:
-    if settings.knowledge_backend == "sqlite":
-        if not settings.knowledge_db_path.exists():
-            raise FileNotFoundError(
-                f"KNOWLEDGE_BACKEND=sqlite but DB does not exist: {settings.knowledge_db_path}"
-            )
-        return FAQService(sqlite_db_path=settings.knowledge_db_path)
-    return FAQService(settings.knowledge_dir)
-
-
-recommendation_service = RecommendationService(
-    repository=_build_catalog_repository(),
-    recommender=ProductRecommender(),
-)
-faq_service = _build_faq_service()
-explanation_service = ExplanationService(OpenAIClient(settings.OPENAI_API_KEY))
-dialogue_service = DialogueService(
-    recommendation_service=recommendation_service,
-    faq_service=faq_service,
-    explanation_service=explanation_service,
-)
-lead_repository = JSONLeadRepository(settings.leads_path)
-lead_service = LeadService()
-manager_notifier = TelegramManagerNotifier(settings.MANAGER_TELEGRAM_CHAT_ID)
+services = build_app_services()
+recommendation_service = services.recommendation_service
+faq_service = services.faq_service
+explanation_service = services.explanation_service
+dialogue_service = services.dialogue_service
+lead_repository = services.lead_repository
+lead_service = services.lead_service
+manager_notifier = services.manager_notifier
 
 
 USE_CASE_MAP = {

@@ -45,6 +45,10 @@ def _build_manager_handoff_summary(lead: Lead) -> str:
     )
 
 
+def build_manager_handoff_summary(lead: Lead) -> str:
+    return _build_manager_handoff_summary(lead)
+
+
 def format_lead_for_manager(lead: Lead) -> str:
     recommended = ", ".join(lead.recommended_products) if lead.recommended_products else "-"
     recent_questions = "; ".join(lead.recent_questions) if lead.recent_questions else "-"

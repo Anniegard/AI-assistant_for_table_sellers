@@ -1,4 +1,5 @@
 aiogram
+fastapi
 openai
 python-dotenv
 pydantic
@@ -7,3 +8,5 @@ pytest
 ruff
 requests
 beautifulsoup4
+httpx
+uvicorn

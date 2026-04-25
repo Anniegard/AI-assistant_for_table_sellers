@@ -5,9 +5,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    ENABLE_TELEGRAM: bool = True
+    ENABLE_WEB_API: bool = False
     TELEGRAM_BOT_TOKEN: str = ""
     OPENAI_API_KEY: str = ""
     MANAGER_TELEGRAM_CHAT_ID: str = ""
+    WEB_ALLOWED_ORIGINS: str = "*"
     PRODUCTS_PATH: str = "data/products.sample.json"
     KNOWLEDGE_DIR: str = "data/knowledge"
     LEADS_PATH: str = "data/leads.local.json"
@@ -46,6 +49,15 @@ class Settings(BaseSettings):
     @property
     def knowledge_db_path(self) -> Path:
         return Path(self.KNOWLEDGE_DB_PATH)
+
+    @property
+    def web_allowed_origins(self) -> list[str]:
+        raw = self.WEB_ALLOWED_ORIGINS.strip()
+        if not raw:
+            return []
+        if raw == "*":
+            return ["*"]
+        return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 @lru_cache

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.0] - 2026-04-25
+
+- Added optional FastAPI demo transport (`/api/demo/*`) with in-memory web sessions, Pydantic API schemas, and endpoint coverage for health, sessions, messages, and lead creation while reusing existing assistant services.
+- Extracted shared service composition into `app_factory` so Telegram and Web API use the same dialogue/recommendation/lead pipeline without duplicating assistant logic.
+- Added transport flags and runtime split (`ENABLE_TELEGRAM`, `ENABLE_WEB_API`, `WEB_ALLOWED_ORIGINS`, `main_api.py`), updated README with Web API usage examples, and kept Telegram transport behavior intact.
+
 ## [0.3.9] - 2026-04-25
 
 - Improved consultative dialogue quality with reusable response templates for recommendations, contextual FAQ answers, comparison replies, and no-exact-match fallback scenarios with clear CTAs.

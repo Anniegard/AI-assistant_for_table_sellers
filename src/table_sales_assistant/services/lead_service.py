@@ -11,7 +11,7 @@ class LeadService:
         return value in {"да", "yes", "y", "true", "1"}
 
     @staticmethod
-    def build_lead(data: dict[str, object]) -> Lead:
+    def build_lead(data: dict[str, object], *, source: str = "telegram_demo") -> Lead:
         return Lead(
             id=f"lead-{uuid4()}",
             created_at=datetime.now(UTC).isoformat(),
@@ -55,5 +55,5 @@ class LeadService:
                 str(data["assistant_comment"]) if data.get("assistant_comment") else None
             ),
             comment=None if data.get("comment") in (None, "-", "") else str(data["comment"]),
-            source="telegram_demo",
+            source=source,
         )

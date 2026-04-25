@@ -13,6 +13,9 @@ async def run_bot() -> None:
     settings = get_settings()
     setup_logging(settings.LOG_LEVEL)
     logger = logging.getLogger(__name__)
+    if not settings.ENABLE_TELEGRAM:
+        logger.info("Telegram transport is disabled by ENABLE_TELEGRAM=false.")
+        return
     if not settings.TELEGRAM_BOT_TOKEN:
         logger.error(
             "TELEGRAM_BOT_TOKEN is not configured. Set it in .env for real Telegram запуск."
