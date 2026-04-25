@@ -70,6 +70,8 @@ def test_dialogue_service_does_not_block_without_monitors() -> None:
     assert response.goal == AssistantGoal.RECOMMEND
     assert "уточните бюджет" not in response.text.lower()
     assert "количество мониторов вы не указали" in response.text.lower()
+    assert "уверенность:" in response.text.lower()
+    assert "ограничения:" in response.text.lower()
 
 
 def test_faq_question_has_priority_over_missing_params() -> None:
@@ -151,15 +153,52 @@ def test_compare_request_uses_recommended_products() -> None:
 
     compare = service.handle("сравни варианты", context)
     assert compare.goal == AssistantGoal.COMPARE
-    assert "если коротко" in compare.text.lower()
+    assert "сравнение по последним вариантам" in compare.text.lower()
+    assert "следующий шаг: есть дешевле?" in compare.text.lower()
     assert context.recommended_products == first_ids
+
+
+def test_recommendation_template_has_confidence_and_cta_hint() -> None:
+    service = _build_service()
+    context = DialogueContext(user_id=15, known_params=KnownClientParams())
+    response = service.handle("рост 182 бюджет 80000 для дома", context)
+    assert response.goal == AssistantGoal.RECOMMEND
+    assert "уверенность:" in response.text.lower()
+    assert "следующий шаг: сравнить варианты." in response.text.lower()
+
+
+def test_faq_uses_contextual_template() -> None:
+    service = _build_service()
+    context = DialogueContext(
+        user_id=16,
+        known_params=KnownClientParams(
+            height_cm=185,
+            budget_max=90000,
+            monitors_count=2,
+            use_case="it_work",
+        ),
+    )
+    response = service.handle("какая гарантия?", context)
+    assert response.goal == AssistantGoal.ANSWER_QUESTION
+    assert "с учетом ваших параметров" in response.text.lower()
+    assert "следующий шаг: подобрать стол." in response.text.lower()
+
+
+def test_fallback_never_returns_empty_no_match_message() -> None:
+    service = _build_service()
+    context = DialogueContext(user_id=17, known_params=KnownClientParams())
+    response = service.handle("подбери стол: рост 230 бюджет 30000", context)
+    assert "точного совпадения сейчас нет" in response.text.lower()
+    assert "что ограничивает подбор" in response.text.lower()
+    assert "ближайшие альтернативы" in response.text.lower()
+    assert response.cta == "Позвать менеджера"
 
 
 def test_accessory_can_be_recommended_only_for_accessory_intent() -> None:
     service = _build_service()
     context = DialogueContext(user_id=12, known_params=KnownClientParams())
     accessory_response = service.handle("какие аксессуары нужны для стола?", context)
-    assert "cabletray pro" in accessory_response.text.lower()
+    assert "из аксессуаров можно рассмотреть" in accessory_response.text.lower()
 
     desk_context = DialogueContext(user_id=13, known_params=KnownClientParams())
     desk_response = service.handle("подбери стол рост 190 бюджет 50000", desk_context)

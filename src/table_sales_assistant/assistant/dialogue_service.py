@@ -130,6 +130,21 @@ class DialogueService:
             strict_budget=True,
         )
 
+    @staticmethod
+    def _known_params_for_text(context: DialogueContext) -> list[str]:
+        params: list[str] = []
+        if context.known_params.height_cm:
+            params.append(f"рост {context.known_params.height_cm} см")
+        if context.known_params.budget_max:
+            params.append(f"бюджет до {context.known_params.budget_max:,} ₽".replace(",", " "))
+        if context.known_params.monitors_count:
+            params.append(f"мониторов: {context.known_params.monitors_count}")
+        if context.known_params.use_case:
+            params.append(f"сценарий: {context.known_params.use_case}")
+        if context.known_params.city:
+            params.append(f"город: {context.known_params.city}")
+        return params
+
     def _format_main_recommendation_text(
         self,
         context: DialogueContext,
@@ -139,17 +154,7 @@ class DialogueService:
         cheaper_intro: str | None = None,
     ) -> str:
         lines: list[str] = []
-        intro_parts: list[str] = []
-        if context.known_params.height_cm:
-            intro_parts.append(f"рост {context.known_params.height_cm} см")
-        if context.known_params.budget_max:
-            intro_parts.append(
-                f"бюджет до {context.known_params.budget_max:,} рублей".replace(",", " ")
-            )
-        if context.known_params.use_case == "home_office":
-            intro_parts.append("сценарий: домашнее рабочее место")
-        elif context.known_params.use_case:
-            intro_parts.append(f"сценарий: {context.known_params.use_case}")
+        intro_parts = self._known_params_for_text(context)
         if intro_parts:
             lines.append(f"Понял: {', '.join(intro_parts)}.")
         if cheaper_intro:
@@ -159,28 +164,37 @@ class DialogueService:
                 "Количество мониторов вы не указали, поэтому сделаю предварительный "
                 "подбор для 1-2 мониторов."
             )
-        lines.append("")
-        lines.append("Подойдут такие варианты:")
-        for idx, item in enumerate(ranked, start=1):
-            lines.append(f"{idx}. {item.product.name}: {item.product.price} ₽")
-            lines.append(f"Почему подходит: {item.reasons[0]}.")
-            if context.known_params.monitors_count is None:
-                lines.append("Если у вас 2+ монитора, лучше уточнить размер столешницы.")
-            elif item.tradeoffs:
-                lines.append(f"Компромисс: {item.tradeoffs[0]}.")
+        recommendation_items: list[dict[str, str]] = []
+        for item in ranked[:3]:
+            reason = item.reasons[0].rstrip(".")
+            tradeoff = (
+                "Если у вас 2+ монитора, лучше дополнительно уточнить размер столешницы"
+                if context.known_params.monitors_count is None
+                else (
+                    item.tradeoffs[0]
+                    if item.tradeoffs
+                    else "Явных ограничений по текущим данным нет"
+                )
+            )
             explanation = explanations.get(item.product.id, "").strip()
             if explanation:
-                lines.append(f"Комментарий: {explanation}")
-            lines.append("")
-        lines.append(
-            "Могу сравнить эти варианты, подобрать дешевле, ответить на вопросы "
-            "или помочь оставить заявку менеджеру."
+                reason = f"{reason}. {explanation}"
+            recommendation_items.append(
+                {
+                    "name": item.product.name,
+                    "price": f"{item.product.price:,} ₽".replace(",", " "),
+                    "reason": reason,
+                    "tradeoff": tradeoff.rstrip("."),
+                    "confidence": ResponseBuilder._format_confidence(item.fit_score),
+                }
+            )
+        response = ResponseBuilder.recommendation(
+            intro_lines=lines,
+            items=recommendation_items,
+            cta="Сравнить варианты",
+            intent=DialogueIntent.RECOMMEND,
         )
-        lines.append(
-            "Дополнительно можно рассмотреть аксессуары: лоток для кабелей, "
-            "держатель системного блока, кронштейн для монитора."
-        )
-        return "\n".join(lines).strip()
+        return response.text
 
     def _build_cheaper_response(
         self, context: DialogueContext, intent: DialogueIntent
@@ -299,28 +313,24 @@ class DialogueService:
         else:
             height_hint = "По текущим параметрам"
         best_balance = by_balance[0]
-        lines = [
-            "Если коротко:",
-            f"1. Самый бюджетный: {by_price[0].name} ({self._format_price(by_price[0].price)}).",
-            (
-                "2. Самый устойчивый: "
-                f"{by_stability[0].name} ({by_stability[0].motors_count} мотора, "
-                f"до {by_stability[0].lifting_capacity_kg} кг)."
-            ),
-            (
-                "3. Лучший баланс: "
-                f"{best_balance.name} ({self._format_price(best_balance.price)}, "
-                f"диапазон {best_balance.min_height_cm}-{best_balance.max_height_cm} см, "
-                f"столешница {best_balance.tabletop_width_cm}x{best_balance.tabletop_depth_cm} см)."
-            ),
-            "",
-            f"{height_hint} я бы начал с {best_balance.name}.",
-        ]
-        return ResponseBuilder.with_cta(
-            "\n".join(lines),
-            goal=AssistantGoal.COMPARE,
-            intent=intent,
+        return ResponseBuilder.comparison(
+            bullets=[
+                f"Самый бюджетный: {by_price[0].name} ({self._format_price(by_price[0].price)})",
+                (
+                    "Самый устойчивый: "
+                    f"{by_stability[0].name} ({by_stability[0].motors_count} мотора, "
+                    f"до {by_stability[0].lifting_capacity_kg} кг)"
+                ),
+                (
+                    "Лучший баланс: "
+                    f"{best_balance.name} ({self._format_price(best_balance.price)}, "
+                    f"диапазон {best_balance.min_height_cm}-{best_balance.max_height_cm} см, "
+                    f"столешница {best_balance.tabletop_width_cm}x{best_balance.tabletop_depth_cm} см)"
+                ),
+            ],
+            conclusion=f"{height_hint} я бы начал с {best_balance.name}.",
             cta="Есть дешевле?",
+            intent=intent,
         )
 
     def handle(self, text: str, context: DialogueContext) -> AssistantResponse:
@@ -378,50 +388,32 @@ class DialogueService:
             if self._is_motor_faq(text):
                 return self._with_history(
                     context,
-                    ResponseBuilder.with_cta(
-                        (
-                            f"{self._motor_faq_answer(context)}\n\n"
-                            "Если хотите, сравню подходящие варианты по устойчивости, "
-                            "нагрузке и цене."
-                        ),
-                        goal=AssistantGoal.ANSWER_QUESTION,
-                        intent=DialogueIntent.FAQ,
+                    ResponseBuilder.faq(
+                        answer=self._motor_faq_answer(context),
+                        known_params=self._known_params_for_text(context),
                         cta="Сравнить варианты",
+                        intent=DialogueIntent.FAQ,
                     ),
                 )
             answer = self.faq_service.answer(text)
             if answer:
-                known = []
-                if context.known_params.height_cm:
-                    known.append(f"рост {context.known_params.height_cm} см")
-                if context.known_params.budget_max:
-                    known.append(f"бюджет до {context.known_params.budget_max} руб")
-                known_params_hint = (
-                    f" Уже вижу параметры: {', '.join(known)}."
-                    if known
-                    else ""
-                )
                 return self._with_history(
                     context,
-                    ResponseBuilder.with_cta(
-                        (
-                            f"{answer}\n\n"
-                            "Если хотите, могу сразу подобрать 2-3 варианта "
-                            f"под ваши параметры.{known_params_hint}"
-                        ),
-                        goal=AssistantGoal.ANSWER_QUESTION,
-                        intent=intent,
+                    ResponseBuilder.faq(
+                        answer=answer,
+                        known_params=self._known_params_for_text(context),
                         cta="Подобрать стол",
+                        intent=intent,
                     ),
                 )
             return self._with_history(
                 context,
-                ResponseBuilder.with_cta(
-                    (
-                        "Точного ответа в базе знаний нет. "
-                        "Могу уточнить у менеджера и передать ваш запрос."
-                    ),
-                    goal=AssistantGoal.HANDOFF_READY,
+                ResponseBuilder.no_exact_match(
+                    blocking_constraint="в базе знаний нет точной статьи по этому вопросу",
+                    alternatives=[
+                        "Подобрать ближайшие модели и объяснить разницу",
+                        "Передать вопрос менеджеру для точного ответа по срокам/условиям",
+                    ],
                     intent=intent,
                     cta="Позвать менеджера",
                 ),
@@ -542,13 +534,16 @@ class DialogueService:
                     )
                 return self._with_history(
                     context,
-                    ResponseBuilder.with_cta(
-                        (
-                            "По вашим параметрам точного совпадения в каталоге сейчас нет. "
-                            "Могу показать ближайший вариант с небольшим расширением бюджета "
-                            "или помочь оформить заявку менеджеру для точного подбора."
+                    ResponseBuilder.no_exact_match(
+                        blocking_constraint=(
+                            "жесткий лимит бюджета"
+                            if context.known_params.budget_max
+                            else "текущая комбинация параметров"
                         ),
-                        goal=AssistantGoal.ASK_MISSING_PARAM,
+                        alternatives=[
+                            "Ослабить одно ограничение и показать ближайшие варианты",
+                            "Уточнить приоритет: цена, размер или устойчивость",
+                        ],
                         intent=intent,
                         cta="Позвать менеджера",
                     ),

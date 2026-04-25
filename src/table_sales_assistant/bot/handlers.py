@@ -13,6 +13,7 @@ from table_sales_assistant.bot.messages import (
     ASK_BUDGET_TEXT,
     ASK_HEIGHT_TEXT,
     ASK_MONITORS_TEXT,
+    ASK_USE_CASE_TEXT,
     ASSISTANT_RESET_TEXT,
     DEMO_MODE_TEXT,
     FAQ_NO_HITS_TEXT,
@@ -124,7 +125,9 @@ def _map_use_case(raw_value: str | None) -> str | None:
     normalized = _normalize_text(raw_value)
     if not normalized:
         return None
-    return USE_CASE_MAP.get(normalized, normalized)
+    if normalized == "пропустить":
+        return None
+    return USE_CASE_MAP.get(normalized)
 
 
 def _build_recommendation_context(data: Mapping[str, object]) -> dict[str, object]:
@@ -224,12 +227,26 @@ async def recommendation_monitors(message: Message, state: FSMContext) -> None:
         await message.answer(ASK_MONITORS_TEXT)
         return
     await state.update_data(monitors_count=monitors_count)
+    await state.set_state(RecommendationStates.use_case)
+    await message.answer(ASK_USE_CASE_TEXT)
+
+
+@router.message(RecommendationStates.use_case)
+async def recommendation_use_case(message: Message, state: FSMContext) -> None:
+    log_dialogue_event(
+        phase="handler_enter",
+        function_name="recommendation_use_case",
+        user_id=_user_id(message),
+        question=message.text,
+        bot_id=_bot_id(message),
+    )
+    await state.update_data(use_case=_map_use_case(message.text))
     raw_data = await state.get_data()
     query = RecommendationQuery(
         budget=raw_data.get("budget"),
         user_height_cm=raw_data.get("user_height"),
         monitors_count=raw_data.get("monitors_count"),
-        use_case=None,
+        use_case=raw_data.get("use_case"),
         motors_preference=None,
     )
     products = recommendation_service.get_recommendations(query)
@@ -237,7 +254,7 @@ async def recommendation_monitors(message: Message, state: FSMContext) -> None:
         await message.answer(NO_PRODUCTS_TEXT, reply_markup=main_menu_keyboard())
         log_dialogue_event(
             phase="bot_answer",
-            function_name="recommendation_monitors",
+            function_name="recommendation_use_case",
             user_id=_user_id(message),
             answer=NO_PRODUCTS_TEXT,
             bot_id=_bot_id(message),
@@ -263,7 +280,7 @@ async def recommendation_monitors(message: Message, state: FSMContext) -> None:
         )
         log_dialogue_event(
             phase="bot_answer",
-            function_name="recommendation_monitors",
+            function_name="recommendation_use_case",
             user_id=_user_id(message),
             answer=f"recommendation_item:{product.id}",
             bot_id=_bot_id(message),
@@ -280,7 +297,7 @@ async def recommendation_monitors(message: Message, state: FSMContext) -> None:
     )
     log_dialogue_event(
         phase="bot_answer",
-        function_name="recommendation_monitors",
+        function_name="recommendation_use_case",
         user_id=_user_id(message),
         answer="Рекомендации готовы. Можно оставить заявку по этим вариантам.",
         bot_id=_bot_id(message),

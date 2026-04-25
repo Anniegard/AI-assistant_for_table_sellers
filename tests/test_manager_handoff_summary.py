@@ -28,3 +28,8 @@ def test_manager_handoff_summary_contains_extended_context() -> None:
     assert "Выбранный вариант: demo-desk-004" in formatted
     assert "Комментарий ассистента:" in formatted
     assert "Сводка диалога:" in formatted
+    assert "Сводка для менеджера:" in formatted
+    assert "Параметры клиента:" in formatted
+    assert "Рекомендованный вариант: demo-desk-004" in formatted
+    assert "Нерешенный вопрос/возражение:" in formatted
+    assert "Следующий шаг:" in formatted

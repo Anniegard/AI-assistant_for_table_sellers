@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.9] - 2026-04-25
+
+- Improved consultative dialogue quality with reusable response templates for recommendations, contextual FAQ answers, comparison replies, and no-exact-match fallback scenarios with clear CTAs.
+- Added richer manager handoff summary content in notifications (known client parameters, recommended option, unresolved question/objection, and suggested manager next step) and expanded regression tests for these flows.
+- Updated demo script/checklist examples to reflect the new response format and refreshed sample catalog/test coverage for the current demo scenarios.
+
 ## [0.3.8] - 2026-04-25
 
 - Ran the StolStoya ingestion scenario into local demo SQLite (`data/private/stolstoya_demo.sqlite`) and verified imported catalog/knowledge records with the DB inspection script.

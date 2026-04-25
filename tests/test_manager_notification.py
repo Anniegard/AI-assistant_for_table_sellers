@@ -56,3 +56,4 @@ def test_manager_notification_sends_when_chat_id_set() -> None:
     assert "Мониторы: 2" in text
     assert "Рекомендации: demo-desk-011" in text
     assert "Комментарий: Тест" in text
+    assert "Сводка для менеджера:" in text

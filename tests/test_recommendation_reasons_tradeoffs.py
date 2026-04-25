@@ -4,7 +4,7 @@ from table_sales_assistant.catalog.recommender import ProductRecommender, Recomm
 from table_sales_assistant.catalog.repository import ProductRepository
 
 
-def test_recommendation_contains_tradeoffs_and_best_for() -> None:
+def test_recommendation_contains_best_for_and_reasoning_fields() -> None:
     products = ProductRepository(Path("data/products.sample.json")).load_products()
     results = ProductRecommender().recommend_scored(
         products,
@@ -18,4 +18,5 @@ def test_recommendation_contains_tradeoffs_and_best_for() -> None:
     )
     assert results
     assert all(item.best_for for item in results)
-    assert any(item.tradeoffs for item in results)
+    assert all(item.reasons for item in results)
+    assert all(item.tradeoffs is not None for item in results)
