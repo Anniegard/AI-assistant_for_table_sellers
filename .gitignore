@@ -27,6 +27,7 @@ docs/commercial_positioning.md
 data/*.sqlite
 data/*.db
 data/private/
+data/private/stolstoya_demo.sqlite
 data/raw/
 data/cache/
 data/imported/

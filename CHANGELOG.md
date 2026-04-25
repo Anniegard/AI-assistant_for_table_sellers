@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.8] - 2026-04-25
+
+- Ran the StolStoya ingestion scenario into local demo SQLite (`data/private/stolstoya_demo.sqlite`) and verified imported catalog/knowledge records with the DB inspection script.
+- Added an explicit `.gitignore` rule for `data/private/stolstoya_demo.sqlite` so local demo data stays untracked without altering already tracked files on GitHub.
+
 ## [0.3.7] - 2026-04-25
 
 - Improved sales tone in no-result/FAQ fallbacks: responses now stay consultative, suggest nearby options, and gently guide users to manager handoff when needed.
