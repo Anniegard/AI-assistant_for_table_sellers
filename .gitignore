@@ -33,3 +33,6 @@ data/cache/
 data/imported/
 exports/
 !data/.gitkeep
+
+# Local VM log exports
+vm-logs-*/

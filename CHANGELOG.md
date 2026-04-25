@@ -5,6 +5,7 @@
 - Reduced repetitive phrasing in recommendation responses by moving monitor caveats to a single intro note and removing duplicated template labels (`Ограничения`, `Уверенность`) from every suggested item.
 - Made dialogue responses more natural by dropping hardcoded `Следующий шаг`/filler tails from recommendation, comparison, FAQ, and no-exact-match templates while keeping CTAs in quick replies.
 - Cleaned FAQ output formatting to avoid leaking knowledge article slugs/headings into user-visible answers and updated dialogue tests to match the new response style.
+- Added `.gitignore` rule for local VM log exports (`vm-logs-*/`) to keep temporary diagnostic dumps out of commits.
 
 ## [0.4.0] - 2026-04-25
 
