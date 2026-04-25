@@ -1,4 +1,5 @@
-﻿from collections.abc import Mapping
+from collections.abc import Mapping
+from time import monotonic
 
 from aiogram import F, Router
 from aiogram.filters import CommandStart
@@ -7,6 +8,7 @@ from aiogram.types import Message
 
 from table_sales_assistant.app_factory import build_app_services
 from table_sales_assistant.assistant.models import DialogueContext, KnownClientParams
+from table_sales_assistant.audit.service import detect_mode
 from table_sales_assistant.bot.keyboards import main_menu_keyboard, recommendation_ready_keyboard
 from table_sales_assistant.bot.messages import (
     ASK_BUDGET_TEXT,
@@ -49,6 +51,7 @@ dialogue_service = services.dialogue_service
 lead_repository = services.lead_repository
 lead_service = services.lead_service
 manager_notifier = services.manager_notifier
+audit_service = services.audit_service
 
 
 USE_CASE_MAP = {
@@ -76,6 +79,12 @@ def _user_id(message: Message) -> int | None:
 
 def _bot_id(message: Message) -> int | None:
     return message.bot.id if message.bot else None
+
+
+def _conversation_id(message: Message) -> str:
+    if message.chat:
+        return f"telegram:{message.chat.id}"
+    return f"telegram_user:{_user_id(message) or 'unknown'}"
 
 
 def _normalize_text(value: str | None) -> str:
@@ -457,6 +466,20 @@ async def lead_comment(message: Message, state: FSMContext) -> None:
         lead_repository.save(lead)
         await manager_notifier.notify(message.bot, lead)
         await message.answer(LEAD_SAVED_TEXT, reply_markup=main_menu_keyboard())
+        audit_service.log_event(
+            audit_service.create_event(
+                conversation_id=_conversation_id(message),
+                channel="telegram",
+                user_id=_user_id(message),
+                username=message.from_user.username if message.from_user else None,
+                mode=detect_mode(),
+                status="success",
+                user_message=message.text,
+                assistant_response=LEAD_SAVED_TEXT,
+                lead_id=lead.id,
+                prompt_version="v1",
+            )
+        )
         log_dialogue_event(
             phase="lead_saved",
             function_name="lead_comment",
@@ -467,6 +490,21 @@ async def lead_comment(message: Message, state: FSMContext) -> None:
         )
     except Exception:
         await message.answer(GENERIC_ERROR_TEXT, reply_markup=main_menu_keyboard())
+        audit_service.log_event(
+            audit_service.create_event(
+                conversation_id=_conversation_id(message),
+                channel="telegram",
+                user_id=_user_id(message),
+                username=message.from_user.username if message.from_user else None,
+                mode=detect_mode(),
+                status="error",
+                user_message=message.text,
+                assistant_response=GENERIC_ERROR_TEXT,
+                error_type="lead_save_error",
+                error_message="lead_save_error",
+                prompt_version="v1",
+            )
+        )
         log_dialogue_event(
             phase="lead_save_error",
             function_name="lead_comment",
@@ -564,7 +602,62 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
         context = DialogueContext(user_id=user_id, known_params=KnownClientParams())
         dialogue_context_store[user_id] = context
 
-    response = dialogue_service.handle(message.text or "", context)
+    started = monotonic()
+    try:
+        response = dialogue_service.handle(message.text or "", context)
+    except Exception as exc:
+        latency_ms = int((monotonic() - started) * 1000)
+        audit_service.log_event(
+            audit_service.create_event(
+                conversation_id=_conversation_id(message),
+                channel="telegram",
+                user_id=user_id,
+                username=message.from_user.username if message.from_user else None,
+                mode=detect_mode(
+                    openai_requested=True,
+                    openai_available=explanation_service.ai_client.is_enabled,
+                ),
+                status="error",
+                user_message=message.text,
+                assistant_response=GENERIC_ERROR_TEXT,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                latency_ms=latency_ms,
+                recommended_products=list(context.recommended_products),
+                prompt_version="v1",
+            )
+        )
+        await message.answer(GENERIC_ERROR_TEXT, reply_markup=main_menu_keyboard())
+        return
+
+    mode = detect_mode(
+        provider="openai" if explanation_service.ai_client.is_enabled else None,
+        openai_requested=response.intent.value
+        in {"recommend", "clarify_recommendation", "objection_price"},
+        openai_available=explanation_service.ai_client.is_enabled,
+    )
+    provider = "openai" if mode == "openai" else None
+    model = "gpt-4.1-mini" if mode == "openai" else None
+    latency_ms = int((monotonic() - started) * 1000)
+    audit_service.log_event(
+        audit_service.create_event(
+            conversation_id=_conversation_id(message),
+            channel="telegram",
+            user_id=user_id,
+            username=message.from_user.username if message.from_user else None,
+            mode=mode,
+            provider=provider,
+            model=model,
+            intent=response.intent.value,
+            status="success",
+            user_message=message.text,
+            assistant_response=response.text,
+            latency_ms=latency_ms,
+            recommended_products=list(context.recommended_products),
+            prompt_version="v1",
+            extra={"goal": response.goal.value},
+        )
+    )
     log_dialogue_event(
         phase="dialogue_processed",
         function_name="free_text_dialogue",

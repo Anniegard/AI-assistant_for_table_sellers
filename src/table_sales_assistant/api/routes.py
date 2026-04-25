@@ -1,4 +1,5 @@
 import logging
+from time import monotonic
 
 from aiogram import Bot
 from fastapi import APIRouter, HTTPException, status
@@ -15,6 +16,7 @@ from table_sales_assistant.api.schemas import (
 )
 from table_sales_assistant.api.session_store import InMemoryWebSessionStore
 from table_sales_assistant.app_factory import AppServices
+from table_sales_assistant.audit.service import detect_mode
 from table_sales_assistant.config import Settings
 from table_sales_assistant.notifications.formatters import build_manager_handoff_summary
 
@@ -57,6 +59,7 @@ def create_demo_router(
         session = session_store.get(payload.session_id)
         if session is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        started = monotonic()
         try:
             response = services.dialogue_service.handle(payload.text, session.context)
             summary = session.context.get_context_summary()
@@ -73,7 +76,32 @@ def create_demo_router(
                 )
                 for item in products
             ]
-            manager_summary = summary["recent_dialogue_summary"] if response.start_lead_flow else None
+            manager_summary = (
+                summary["recent_dialogue_summary"] if response.start_lead_flow else None
+            )
+            mode = detect_mode(
+                provider="openai" if services.explanation_service.ai_client.is_enabled else None,
+                openai_requested=response.intent.value
+                in {"recommend", "clarify_recommendation", "objection_price"},
+                openai_available=services.explanation_service.ai_client.is_enabled,
+            )
+            services.audit_service.log_event(
+                services.audit_service.create_event(
+                    conversation_id=session.session_id,
+                    channel="web_api",
+                    mode=mode,
+                    provider="openai" if mode == "openai" else None,
+                    model="gpt-4.1-mini" if mode == "openai" else None,
+                    intent=response.intent.value,
+                    status="success",
+                    user_message=payload.text,
+                    assistant_response=response.text,
+                    latency_ms=int((monotonic() - started) * 1000),
+                    recommended_products=list(session.context.recommended_products),
+                    prompt_version="v1",
+                    extra={"goal": response.goal.value},
+                )
+            )
             return MessageResponse(
                 session_id=session.session_id,
                 assistant_text=response.text,
@@ -97,13 +125,32 @@ def create_demo_router(
                 payload.session_id,
             )
             summary = session.context.get_context_summary()
+            fallback_text = (
+                "Сейчас есть технические ограничения внешнего AI-сервиса. "
+                "Я продолжаю работать в демо-режиме: напишите рост и бюджет, "
+                "и я подберу варианты из каталога."
+            )
+            services.audit_service.log_event(
+                services.audit_service.create_event(
+                    conversation_id=session.session_id,
+                    channel="web_api",
+                    mode=detect_mode(
+                        openai_requested=True,
+                        openai_available=services.explanation_service.ai_client.is_enabled,
+                    ),
+                    status="error",
+                    user_message=payload.text,
+                    assistant_response=fallback_text,
+                    error_type="message_processing_error",
+                    error_message="Unhandled error in /api/demo/messages",
+                    latency_ms=int((monotonic() - started) * 1000),
+                    recommended_products=list(session.context.recommended_products),
+                    prompt_version="v1",
+                )
+            )
             return MessageResponse(
                 session_id=session.session_id,
-                assistant_text=(
-                    "Сейчас есть технические ограничения внешнего AI-сервиса. "
-                    "Я продолжаю работать в демо-режиме: напишите рост и бюджет, "
-                    "и я подберу варианты из каталога."
-                ),
+                assistant_text=fallback_text,
                 intent="fallback",
                 quick_replies=["Подобрать стол", "Позвать менеджера"],
                 recommended_products=[],

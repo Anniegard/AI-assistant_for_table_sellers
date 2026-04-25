@@ -2,6 +2,8 @@ from dataclasses import dataclass
 
 from table_sales_assistant.ai.client import OpenAIClient
 from table_sales_assistant.assistant.dialogue_service import DialogueService
+from table_sales_assistant.audit.repository import JSONLDialogueAuditRepository
+from table_sales_assistant.audit.service import DialogueAuditService
 from table_sales_assistant.catalog.recommender import ProductRecommender
 from table_sales_assistant.catalog.repository import ProductRepository
 from table_sales_assistant.catalog.sqlite_repository import SQLiteCatalogRepository
@@ -23,6 +25,7 @@ class AppServices:
     lead_repository: JSONLeadRepository
     lead_service: LeadService
     manager_notifier: TelegramManagerNotifier
+    audit_service: DialogueAuditService
 
 
 def _build_catalog_repository(settings: Settings) -> ProductRepository | SQLiteCatalogRepository:
@@ -71,4 +74,8 @@ def build_app_services(settings: Settings | None = None) -> AppServices:
         lead_repository=JSONLeadRepository(app_settings.leads_path),
         lead_service=LeadService(),
         manager_notifier=TelegramManagerNotifier(app_settings.MANAGER_TELEGRAM_CHAT_ID),
+        audit_service=DialogueAuditService(
+            JSONLDialogueAuditRepository(app_settings.ai_dialogue_log_path),
+            enabled=app_settings.AI_DIALOGUE_LOG_ENABLED,
+        ),
     )

@@ -25,10 +25,28 @@
 - Без `OPENAI_API_KEY` проект работает в offline/demo режиме.
 - Это MVP: без CRM, web-widget и production RAG.
 
+## AI dialogue audit logs
+
+Добавлен backend audit logging для обменов `пользователь -> ассистент`.
+
+- Формат хранения: append-only JSONL.
+- По умолчанию путь: `data/private/ai_dialogue_events.jsonl`.
+- События включают: `conversation_id`, `channel`, `mode`, `intent`, `status`, `latency_ms`, `lead_id`, `recommended_products`.
+- Текст сообщений проходит sanitization (`phone -> [phone]`, `email -> [email]`).
+- При ошибке записи бот/API не падают: пишется только warning в обычный logger.
+
+Пример env:
+
+```env
+AI_DIALOGUE_LOG_ENABLED=true
+AI_DIALOGUE_LOG_PATH=data/private/ai_dialogue_events.jsonl
+```
+
 ## Архитектура
 
 - `bot`: Telegram transport слой и FSM-состояния.
 - `assistant`: persona, intent routing, dialogue service, response builder.
+- `audit`: модели и JSONL репозиторий для audit-событий диалога.
 - `catalog`: структура товаров и scoring recommender.
 - `knowledge`: загрузка markdown и keyword search.
 - `ai`: клиент OpenAI.

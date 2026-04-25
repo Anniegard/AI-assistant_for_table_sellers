@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     CATALOG_DB_PATH: str = "data/private/stolstoya_demo.sqlite"
     KNOWLEDGE_BACKEND: str = "markdown"
     KNOWLEDGE_DB_PATH: str = "data/private/stolstoya_demo.sqlite"
+    AI_DIALOGUE_LOG_ENABLED: bool = True
+    AI_DIALOGUE_LOG_PATH: str = "data/private/ai_dialogue_events.jsonl"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -52,6 +54,10 @@ class Settings(BaseSettings):
     @property
     def knowledge_db_path(self) -> Path:
         return Path(self.KNOWLEDGE_DB_PATH)
+
+    @property
+    def ai_dialogue_log_path(self) -> Path:
+        return Path(self.AI_DIALOGUE_LOG_PATH)
 
     @property
     def web_allowed_origins(self) -> list[str]:

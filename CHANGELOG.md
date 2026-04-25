@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3] - 2026-04-25
+
+- Added dedicated dialogue audit backend module (`audit`) with structured event model, append-only JSONL repository, and fail-safe service API for `read_recent()` / `export_events_as_json()`.
+- Added privacy-first sanitization for dialogue text in audit logs (phone/email masking), plus `AI_DIALOGUE_LOG_ENABLED` and `AI_DIALOGUE_LOG_PATH` config/env wiring with default path `data/private/ai_dialogue_events.jsonl`.
+- Integrated success/error audit events with `latency_ms` into Telegram free-text flow and Web API `/api/demo/messages`, including mode detection (`openai` / `offline` / `yandex_ai` / `unknown`), intent, recommended products, and lead-aware logging.
+- Added regression tests for JSONL persistence, valid JSON lines, `read_recent(limit)`, sanitize behavior, fail-safe write errors, and mode detection.
+
 ## [0.4.2] - 2026-04-25
 
 - Hardened `/api/demo/messages` against OpenAI/network failures: added stable route-level exception fallback with sanitized user-facing text while preserving backend traceback logging.
