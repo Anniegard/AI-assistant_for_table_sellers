@@ -159,23 +159,19 @@ class DialogueService:
             lines.append(f"Понял: {', '.join(intro_parts)}.")
         if cheaper_intro:
             lines.append(cheaper_intro)
-        if context.known_params.monitors_count is None:
+        missing_monitors_info = context.known_params.monitors_count is None
+        if missing_monitors_info:
             lines.append(
                 "Количество мониторов вы не указали, поэтому сделаю предварительный "
                 "подбор для 1-2 мониторов."
             )
+            lines.append(
+                "Если у вас 2+ монитора, лучше дополнительно уточнить размер столешницы."
+            )
         recommendation_items: list[dict[str, str]] = []
         for item in ranked[:3]:
             reason = item.reasons[0].rstrip(".")
-            tradeoff = (
-                "Если у вас 2+ монитора, лучше дополнительно уточнить размер столешницы"
-                if context.known_params.monitors_count is None
-                else (
-                    item.tradeoffs[0]
-                    if item.tradeoffs
-                    else "Явных ограничений по текущим данным нет"
-                )
-            )
+            tradeoff = item.tradeoffs[0].rstrip(".") if item.tradeoffs else ""
             explanation = explanations.get(item.product.id, "").strip()
             if explanation:
                 reason = f"{reason}. {explanation}"

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.1] - 2026-04-25
+
+- Reduced repetitive phrasing in recommendation responses by moving monitor caveats to a single intro note and removing duplicated template labels (`Ограничения`, `Уверенность`) from every suggested item.
+- Made dialogue responses more natural by dropping hardcoded `Следующий шаг`/filler tails from recommendation, comparison, FAQ, and no-exact-match templates while keeping CTAs in quick replies.
+- Cleaned FAQ output formatting to avoid leaking knowledge article slugs/headings into user-visible answers and updated dialogue tests to match the new response style.
+
 ## [0.4.0] - 2026-04-25
 
 - Added optional FastAPI demo transport (`/api/demo/*`) with in-memory web sessions, Pydantic API schemas, and endpoint coverage for health, sessions, messages, and lead creation while reusing existing assistant services.

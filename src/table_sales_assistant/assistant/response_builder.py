@@ -38,10 +38,9 @@ class ResponseBuilder:
         lines = [*intro_lines, "", "Рекомендую:"]
         for idx, item in enumerate(items[:3], start=1):
             lines.append(f"{idx}. {item['name']} — {item['price']}")
-            lines.append(f"Почему подходит: {item['reason']}")
-            lines.append(f"Ограничения: {item['tradeoff']}")
-            lines.append(f"Уверенность: {item['confidence']}")
-        lines.extend(["", f"Следующий шаг: {cta}."])
+            lines.append(item["reason"])
+            if item["tradeoff"]:
+                lines.append(f"Важно учесть: {item['tradeoff']}")
         return cls.with_cta(
             "\n".join(lines).strip(),
             goal=AssistantGoal.RECOMMEND,
@@ -61,10 +60,7 @@ class ResponseBuilder:
         context_line = ""
         if known_params:
             context_line = f"С учетом ваших параметров ({', '.join(known_params)}). "
-        text = (
-            f"{context_line}{answer}\n\n"
-            f"Если хотите, продолжим по вашему запросу. Следующий шаг: {cta}."
-        )
+        text = f"{context_line}{answer}"
         return cls.with_cta(text, goal=AssistantGoal.ANSWER_QUESTION, intent=intent, cta=cta)
 
     @classmethod
@@ -73,7 +69,7 @@ class ResponseBuilder:
     ) -> AssistantResponse:
         lines = ["Сравнение по последним вариантам:"]
         lines.extend(f"- {line}" for line in bullets)
-        lines.extend(["", conclusion, f"Следующий шаг: {cta}."])
+        lines.extend(["", conclusion])
         return cls.with_cta(
             "\n".join(lines),
             goal=AssistantGoal.COMPARE,
@@ -97,7 +93,6 @@ class ResponseBuilder:
         if alternatives:
             lines.append("Ближайшие альтернативы:")
             lines.extend(f"- {item}" for item in alternatives[:3])
-        lines.append(f"Следующий шаг: {cta}.")
         return cls.with_cta(
             "\n".join(lines),
             goal=AssistantGoal.HANDOFF_READY,

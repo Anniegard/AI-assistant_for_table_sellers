@@ -68,16 +68,23 @@ class FAQService:
             if not summary:
                 preview = doc["content"].strip().splitlines()
                 summary = " ".join(line.strip() for line in preview[:3] if line.strip())
-            return f'{doc["title"]}: {summary}'
+            return self._cleanup_answer_text(summary)
 
         hits = search_knowledge(self.articles, question)
         if not hits:
             return self._fallback_answer(question)
 
-        title, content = hits[0]
+        _, content = hits[0]
         preview = content.strip().splitlines()
         short_answer = " ".join(line.strip() for line in preview[:3] if line.strip())
-        return f"{title}: {short_answer}"
+        return self._cleanup_answer_text(short_answer)
+
+    @staticmethod
+    def _cleanup_answer_text(text: str) -> str:
+        cleaned = (text or "").strip()
+        if cleaned.startswith("#"):
+            cleaned = cleaned.lstrip("#").strip()
+        return cleaned
 
     def _fallback_answer(self, question: str) -> str | None:
         lowered = (question or "").lower()

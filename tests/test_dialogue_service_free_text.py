@@ -70,8 +70,8 @@ def test_dialogue_service_does_not_block_without_monitors() -> None:
     assert response.goal == AssistantGoal.RECOMMEND
     assert "уточните бюджет" not in response.text.lower()
     assert "количество мониторов вы не указали" in response.text.lower()
-    assert "уверенность:" in response.text.lower()
-    assert "ограничения:" in response.text.lower()
+    assert "уверенность:" not in response.text.lower()
+    assert "если у вас 2+ монитора" in response.text.lower()
 
 
 def test_faq_question_has_priority_over_missing_params() -> None:
@@ -154,17 +154,18 @@ def test_compare_request_uses_recommended_products() -> None:
     compare = service.handle("сравни варианты", context)
     assert compare.goal == AssistantGoal.COMPARE
     assert "сравнение по последним вариантам" in compare.text.lower()
-    assert "следующий шаг: есть дешевле?" in compare.text.lower()
+    assert "следующий шаг:" not in compare.text.lower()
     assert context.recommended_products == first_ids
 
 
-def test_recommendation_template_has_confidence_and_cta_hint() -> None:
+def test_recommendation_template_is_compact_without_confidence_and_cta_hint() -> None:
     service = _build_service()
     context = DialogueContext(user_id=15, known_params=KnownClientParams())
     response = service.handle("рост 182 бюджет 80000 для дома", context)
     assert response.goal == AssistantGoal.RECOMMEND
-    assert "уверенность:" in response.text.lower()
-    assert "следующий шаг: сравнить варианты." in response.text.lower()
+    assert "уверенность:" not in response.text.lower()
+    assert "следующий шаг:" not in response.text.lower()
+    assert "рекомендую:" in response.text.lower()
 
 
 def test_faq_uses_contextual_template() -> None:
@@ -181,7 +182,7 @@ def test_faq_uses_contextual_template() -> None:
     response = service.handle("какая гарантия?", context)
     assert response.goal == AssistantGoal.ANSWER_QUESTION
     assert "с учетом ваших параметров" in response.text.lower()
-    assert "следующий шаг: подобрать стол." in response.text.lower()
+    assert "следующий шаг:" not in response.text.lower()
 
 
 def test_fallback_never_returns_empty_no_match_message() -> None:
