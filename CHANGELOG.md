@@ -6,6 +6,7 @@
 - Added richer manager handoff summary content in notifications (known client parameters, recommended option, unresolved question/objection, and suggested manager next step) and expanded regression tests for these flows.
 - Updated demo script/checklist examples to reflect the new response format and refreshed sample catalog/test coverage for the current demo scenarios.
 - Fixed Ruff/CI formatting issue in comparison response text assembly in `dialogue_service` without changing recommendation behavior.
+- Added explicit GitHub Actions workflow permissions (`contents: read`) in CI to satisfy least-privilege checks and remove CodeQL warning.
 
 ## [0.3.8] - 2026-04-25
 
