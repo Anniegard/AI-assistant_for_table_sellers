@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.5] - 2026-04-26
+
+- Aligned dialogue audit format with admin analytics contract by introducing explicit `event_type` values (`user_message_received`, `assistant_response_sent`) and writing separate user/assistant events in Telegram and Web API flows.
+- Prevented technical OpenAI prompt context from polluting dialogue fields in JSONL by moving request/response internals to structured `extra` payload fields.
+
 ## [0.4.4] - 2026-04-25
 
 - Fixed audit mode detection to reflect the real response generation path: `openai` only when a concrete reply actually used LLM output, `offline` for rule-based/fallback responses, and `unknown` when usage cannot be determined.

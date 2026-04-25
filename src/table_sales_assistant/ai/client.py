@@ -42,9 +42,12 @@ class OpenAIClient:
         started = perf_counter()
         log_dialogue_event(
             phase="openai_request",
-            question=user_prompt,
             function_name="OpenAIClient.simple_chat",
-            extra={"model": self.model, "system_prompt_len": len(system_prompt)},
+            extra={
+                "model": self.model,
+                "system_prompt_len": len(system_prompt),
+                "prompt_context": user_prompt,
+            },
         )
         try:
             response = self._client.responses.create(
@@ -59,10 +62,13 @@ class OpenAIClient:
             logger.info("OpenAI response processed in %sms", elapsed_ms)
             log_dialogue_event(
                 phase="openai_response",
-                question=user_prompt,
-                answer=output_text,
                 function_name="OpenAIClient.simple_chat",
-                extra={"model": self.model, "latency_ms": elapsed_ms},
+                extra={
+                    "model": self.model,
+                    "latency_ms": elapsed_ms,
+                    "prompt_context": user_prompt,
+                    "llm_output": output_text,
+                },
             )
             return output_text
         except Exception as exc:

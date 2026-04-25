@@ -61,6 +61,17 @@ def create_demo_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
         started = monotonic()
         services.explanation_service.reset_usage_tracking()
+        services.audit_service.log_event(
+            services.audit_service.create_event(
+                event_type="user_message_received",
+                conversation_id=session.session_id,
+                channel="web_api",
+                mode="unknown",
+                status="success",
+                user_message=payload.text,
+                prompt_version="v1",
+            )
+        )
         try:
             response = services.dialogue_service.handle(payload.text, session.context)
             summary = session.context.get_context_summary()
@@ -86,6 +97,7 @@ def create_demo_router(
             )
             services.audit_service.log_event(
                 services.audit_service.create_event(
+                    event_type="assistant_response_sent",
                     conversation_id=session.session_id,
                     channel="web_api",
                     mode=mode,
@@ -135,6 +147,7 @@ def create_demo_router(
             )
             services.audit_service.log_event(
                 services.audit_service.create_event(
+                    event_type="assistant_response_sent",
                     conversation_id=session.session_id,
                     channel="web_api",
                     mode=detect_mode(used_llm=services.explanation_service.last_response_used_llm),

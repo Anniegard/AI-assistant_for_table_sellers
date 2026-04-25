@@ -8,10 +8,12 @@ from pydantic import BaseModel, Field
 
 DialogueMode = Literal["openai", "offline", "yandex_ai", "unknown"]
 DialogueStatus = Literal["success", "error"]
+DialogueEventType = Literal["user_message_received", "assistant_response_sent"]
 
 
 class DialogueAuditEvent(BaseModel):
     event_id: str = Field(default_factory=lambda: str(uuid4()))
+    event_type: DialogueEventType = "assistant_response_sent"
     conversation_id: str
     channel: str = "telegram"
     user_id: int | None = None

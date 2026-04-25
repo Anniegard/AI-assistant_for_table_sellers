@@ -604,12 +604,26 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
 
     started = monotonic()
     explanation_service.reset_usage_tracking()
+    audit_service.log_event(
+        audit_service.create_event(
+            event_type="user_message_received",
+            conversation_id=_conversation_id(message),
+            channel="telegram",
+            user_id=user_id,
+            username=message.from_user.username if message.from_user else None,
+            mode="unknown",
+            status="success",
+            user_message=message.text,
+            prompt_version="v1",
+        )
+    )
     try:
         response = dialogue_service.handle(message.text or "", context)
     except Exception as exc:
         latency_ms = int((monotonic() - started) * 1000)
         audit_service.log_event(
             audit_service.create_event(
+                event_type="assistant_response_sent",
                 conversation_id=_conversation_id(message),
                 channel="telegram",
                 user_id=user_id,
@@ -637,6 +651,7 @@ async def free_text_dialogue(message: Message, state: FSMContext) -> None:
     latency_ms = int((monotonic() - started) * 1000)
     audit_service.log_event(
         audit_service.create_event(
+            event_type="assistant_response_sent",
             conversation_id=_conversation_id(message),
             channel="telegram",
             user_id=user_id,
