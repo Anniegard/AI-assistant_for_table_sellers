@@ -64,6 +64,7 @@ python -m table_sales_assistant.main
 - `WEB_HOST` (default: `0.0.0.0`)
 - `WEB_PORT` (default: `8000`)
 - `TELEGRAM_BOT_TOKEN`
+- `OPENAI_ENABLED` (default: `true`; set `false` for fully local demo mode)
 - `OPENAI_API_KEY` (optional)
 - `MANAGER_TELEGRAM_CHAT_ID` (optional)
 - `PRODUCTS_PATH`
@@ -127,6 +128,29 @@ curl -X POST http://localhost:8000/api/demo/leads ^
 ```
 
 Важно: OpenAI ключ остается только на backend стороне (env/config) и не передается во frontend.
+
+## Demo without OpenAI
+
+Проект поддерживает стабильный локальный режим для VM/окружений без доступа к OpenAI API.
+
+- Установите `OPENAI_ENABLED=false` в `.env`.
+- В этом режиме OpenAI полностью пропускается, даже если `OPENAI_API_KEY` заполнен.
+- `POST /api/demo/messages` продолжает работать через локальную логику:
+  - catalog-backed рекомендации;
+  - шаблоны `ResponseBuilder`;
+  - FAQ/keyword fallback.
+- Backend логирует тип исключения и traceback при ошибках внешнего AI, но API не отдает сырые provider errors во frontend.
+
+Пример `.env` для офлайн-демо:
+
+```env
+ENABLE_TELEGRAM=false
+ENABLE_WEB_API=true
+OPENAI_ENABLED=false
+WEB_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+WEB_HOST=0.0.0.0
+WEB_PORT=8000
+```
 
 ## Deploy behind nginx
 

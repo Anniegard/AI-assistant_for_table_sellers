@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import Bot
 from fastapi import APIRouter, HTTPException, status
 
@@ -15,6 +17,8 @@ from table_sales_assistant.api.session_store import InMemoryWebSessionStore
 from table_sales_assistant.app_factory import AppServices
 from table_sales_assistant.config import Settings
 from table_sales_assistant.notifications.formatters import build_manager_handoff_summary
+
+logger = logging.getLogger(__name__)
 
 
 def _quick_replies(cta: str | None, *, has_recommendations: bool) -> list[str]:
@@ -53,38 +57,63 @@ def create_demo_router(
         session = session_store.get(payload.session_id)
         if session is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-
-        response = services.dialogue_service.handle(payload.text, session.context)
-        summary = session.context.get_context_summary()
-        session.last_recommendation_context = summary
-        products = services.recommendation_service.get_products_by_ids(
-            session.context.recommended_products
-        )
-        product_cards = [
-            ProductCard(
-                id=item.id,
-                name=item.name,
-                price=item.price,
-                product_url=item.product_url,
+        try:
+            response = services.dialogue_service.handle(payload.text, session.context)
+            summary = session.context.get_context_summary()
+            session.last_recommendation_context = summary
+            products = services.recommendation_service.get_products_by_ids(
+                session.context.recommended_products
             )
-            for item in products
-        ]
-        manager_summary = summary["recent_dialogue_summary"] if response.start_lead_flow else None
-        return MessageResponse(
-            session_id=session.session_id,
-            assistant_text=response.text,
-            intent=response.intent.value,
-            quick_replies=_quick_replies(
-                response.cta, has_recommendations=bool(session.context.recommended_products)
-            ),
-            recommended_products=product_cards,
-            lead_state=LeadState(
-                start_lead_flow=response.start_lead_flow,
-                has_recommendations=bool(session.context.recommended_products),
-                known_params=summary["known_params"],
-            ),
-            manager_summary=manager_summary,
-        )
+            product_cards = [
+                ProductCard(
+                    id=item.id,
+                    name=item.name,
+                    price=item.price,
+                    product_url=item.product_url,
+                )
+                for item in products
+            ]
+            manager_summary = summary["recent_dialogue_summary"] if response.start_lead_flow else None
+            return MessageResponse(
+                session_id=session.session_id,
+                assistant_text=response.text,
+                intent=response.intent.value,
+                quick_replies=_quick_replies(
+                    response.cta, has_recommendations=bool(session.context.recommended_products)
+                ),
+                recommended_products=product_cards,
+                lead_state=LeadState(
+                    start_lead_flow=response.start_lead_flow,
+                    has_recommendations=bool(session.context.recommended_products),
+                    known_params=summary["known_params"],
+                ),
+                manager_summary=manager_summary,
+            )
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception(
+                "Unhandled error in /api/demo/messages for session_id=%s",
+                payload.session_id,
+            )
+            summary = session.context.get_context_summary()
+            return MessageResponse(
+                session_id=session.session_id,
+                assistant_text=(
+                    "Сейчас есть технические ограничения внешнего AI-сервиса. "
+                    "Я продолжаю работать в демо-режиме: напишите рост и бюджет, "
+                    "и я подберу варианты из каталога."
+                ),
+                intent="fallback",
+                quick_replies=["Подобрать стол", "Позвать менеджера"],
+                recommended_products=[],
+                lead_state=LeadState(
+                    start_lead_flow=False,
+                    has_recommendations=bool(session.context.recommended_products),
+                    known_params=summary["known_params"],
+                ),
+                manager_summary=None,
+            )
 
     @router.post("/leads", response_model=LeadResponse)
     async def create_lead(payload: LeadRequest) -> LeadResponse:

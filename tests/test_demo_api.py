@@ -9,12 +9,18 @@ from table_sales_assistant.app_factory import build_app_services
 from table_sales_assistant.config import Settings
 
 
-def _build_client(tmp_path: Path) -> tuple[TestClient, Path]:
+def _build_client(
+    tmp_path: Path,
+    *,
+    openai_enabled: bool = True,
+    openai_api_key: str = "",
+) -> tuple[TestClient, Path]:
     leads_path = tmp_path / "leads.test.json"
     settings = Settings(
         ENABLE_WEB_API=True,
         ENABLE_TELEGRAM=False,
-        OPENAI_API_KEY="",
+        OPENAI_ENABLED=openai_enabled,
+        OPENAI_API_KEY=openai_api_key,
         PRODUCTS_PATH="data/products.sample.json",
         KNOWLEDGE_DIR="data/knowledge",
         LEADS_PATH=str(leads_path),
@@ -61,6 +67,68 @@ def test_demo_message_flow_returns_required_fields(tmp_path: Path) -> None:
     assert isinstance(payload["recommended_products"], list)
     assert "lead_state" in payload
     assert isinstance(payload["lead_state"]["known_params"], dict)
+
+
+def test_demo_messages_openai_disabled_returns_recommendation(tmp_path: Path) -> None:
+    client, _ = _build_client(tmp_path, openai_enabled=False)
+    with client:
+        session_id = client.post("/api/demo/sessions").json()["session_id"]
+        response = client.post(
+            "/api/demo/messages",
+            json={
+                "session_id": session_id,
+                "text": "Мне нужен стол до 70000, рост 185, два монитора",
+            },
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["assistant_text"]
+    assert payload["intent"]
+    assert isinstance(payload["recommended_products"], list)
+    assert payload["recommended_products"]
+
+
+def test_demo_messages_openai_failure_returns_stable_fallback(tmp_path: Path, monkeypatch) -> None:
+    client, _ = _build_client(tmp_path, openai_enabled=True, openai_api_key="test-key")
+    with client:
+        session_id = client.post("/api/demo/sessions").json()["session_id"]
+        openai_client = client.app.state.services.explanation_service.ai_client
+
+        def _raise_provider_error(*args, **kwargs):
+            raise RuntimeError("OpenAI upstream timeout: 504 gateway")
+
+        monkeypatch.setattr(openai_client, "simple_chat", _raise_provider_error)
+        response = client.post(
+            "/api/demo/messages",
+            json={"session_id": session_id, "text": "рост 185 бюджет 70000 два монитора"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["assistant_text"]
+    assert "OpenAI" not in payload["assistant_text"]
+    assert "timeout" not in payload["assistant_text"].lower()
+    assert isinstance(payload["recommended_products"], list)
+    assert payload["recommended_products"]
+
+
+def test_demo_messages_unhandled_error_is_sanitized(tmp_path: Path, monkeypatch) -> None:
+    client, _ = _build_client(tmp_path)
+    with client:
+        session_id = client.post("/api/demo/sessions").json()["session_id"]
+
+        def _raise_unhandled(*args, **kwargs):
+            raise RuntimeError("OpenAI AuthError: invalid_api_key")
+
+        monkeypatch.setattr(client.app.state.services.dialogue_service, "handle", _raise_unhandled)
+        response = client.post(
+            "/api/demo/messages",
+            json={"session_id": session_id, "text": "помоги выбрать стол"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["intent"] == "fallback"
+    assert "OpenAI" not in payload["assistant_text"]
+    assert "invalid_api_key" not in payload["assistant_text"]
 
 
 def test_demo_messages_invalid_session_returns_404(tmp_path: Path) -> None:

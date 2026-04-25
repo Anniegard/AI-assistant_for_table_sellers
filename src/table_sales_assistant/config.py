@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     ENABLE_TELEGRAM: bool = True
     ENABLE_WEB_API: bool = False
     TELEGRAM_BOT_TOKEN: str = ""
+    OPENAI_ENABLED: bool = True
     OPENAI_API_KEY: str = ""
     MANAGER_TELEGRAM_CHAT_ID: str = ""
     WEB_ALLOWED_ORIGINS: str = "*"

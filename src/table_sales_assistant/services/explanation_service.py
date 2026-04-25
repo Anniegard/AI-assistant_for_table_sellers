@@ -1,6 +1,10 @@
+import logging
+
 from table_sales_assistant.ai.client import OpenAIClient
 from table_sales_assistant.assistant.prompts import ERGO_ASSISTANT_SYSTEM_PROMPT
 from table_sales_assistant.catalog.models import Product
+
+logger = logging.getLogger(__name__)
 
 
 class ExplanationService:
@@ -47,5 +51,9 @@ class ExplanationService:
                 )
                 explanations[product.id] = ai_text or fallback
             except Exception:
+                logger.exception(
+                    "Failed to generate AI explanation for product_id=%s; using fallback",
+                    product.id,
+                )
                 explanations[product.id] = fallback
         return explanations

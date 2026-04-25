@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.2] - 2026-04-25
+
+- Hardened `/api/demo/messages` against OpenAI/network failures: added stable route-level exception fallback with sanitized user-facing text while preserving backend traceback logging.
+- Added explicit `OPENAI_ENABLED` config flag and wired service construction so demo can run fully local mode even when API key exists.
+- Improved OpenAI resilience and test coverage: AI client now catches provider exceptions with structured error logging, explanation flow always degrades to deterministic text, and API tests verify no-500/no-leak behavior.
+
 ## [0.4.1] - 2026-04-25
 
 - Reduced repetitive phrasing in recommendation responses by moving monitor caveats to a single intro note and removing duplicated template labels (`Ограничения`, `Уверенность`) from every suggested item.

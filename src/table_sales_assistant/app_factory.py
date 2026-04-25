@@ -52,7 +52,12 @@ def build_app_services(settings: Settings | None = None) -> AppServices:
         recommender=ProductRecommender(),
     )
     faq_service = _build_faq_service(app_settings)
-    explanation_service = ExplanationService(OpenAIClient(app_settings.OPENAI_API_KEY))
+    explanation_service = ExplanationService(
+        OpenAIClient(
+            api_key=app_settings.OPENAI_API_KEY,
+            enabled=app_settings.OPENAI_ENABLED,
+        )
+    )
     dialogue_service = DialogueService(
         recommendation_service=recommendation_service,
         faq_service=faq_service,

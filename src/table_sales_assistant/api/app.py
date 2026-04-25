@@ -17,6 +17,8 @@ def create_app(
     store = session_store or InMemoryWebSessionStore()
 
     app = FastAPI(title="Table Sales Assistant Demo API")
+    app.state.settings = app_settings
+    app.state.services = app_services
     app.add_middleware(
         CORSMiddleware,
         allow_origins=app_settings.web_allowed_origins,
