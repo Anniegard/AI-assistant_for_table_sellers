@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.6] - 2026-04-26
+
+- Restored compatibility fields in OpenAI technical logs by writing `question` and `answer` for `openai_request`/`openai_response` events while keeping structured internals in `extra`.
+
 ## [0.4.5] - 2026-04-26
 
 - Aligned dialogue audit format with admin analytics contract by introducing explicit `event_type` values (`user_message_received`, `assistant_response_sent`) and writing separate user/assistant events in Telegram and Web API flows.

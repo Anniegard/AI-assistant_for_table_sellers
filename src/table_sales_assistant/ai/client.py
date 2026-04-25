@@ -42,6 +42,7 @@ class OpenAIClient:
         started = perf_counter()
         log_dialogue_event(
             phase="openai_request",
+            question=user_prompt,
             function_name="OpenAIClient.simple_chat",
             extra={
                 "model": self.model,
@@ -62,6 +63,8 @@ class OpenAIClient:
             logger.info("OpenAI response processed in %sms", elapsed_ms)
             log_dialogue_event(
                 phase="openai_response",
+                question=user_prompt,
+                answer=output_text,
                 function_name="OpenAIClient.simple_chat",
                 extra={
                     "model": self.model,
