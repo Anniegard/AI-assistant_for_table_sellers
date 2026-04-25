@@ -1,3 +1,4 @@
+from aiogram import Bot
 from fastapi import APIRouter, HTTPException, status
 
 from table_sales_assistant.api.schemas import (
@@ -12,6 +13,7 @@ from table_sales_assistant.api.schemas import (
 )
 from table_sales_assistant.api.session_store import InMemoryWebSessionStore
 from table_sales_assistant.app_factory import AppServices
+from table_sales_assistant.config import Settings
 from table_sales_assistant.notifications.formatters import build_manager_handoff_summary
 
 
@@ -29,6 +31,7 @@ def _quick_replies(cta: str | None, *, has_recommendations: bool) -> list[str]:
 def create_demo_router(
     services: AppServices,
     session_store: InMemoryWebSessionStore,
+    settings: Settings,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/demo", tags=["demo"])
 
@@ -84,7 +87,7 @@ def create_demo_router(
         )
 
     @router.post("/leads", response_model=LeadResponse)
-    def create_lead(payload: LeadRequest) -> LeadResponse:
+    async def create_lead(payload: LeadRequest) -> LeadResponse:
         session = session_store.get(payload.session_id)
         if session is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
@@ -108,6 +111,12 @@ def create_demo_router(
         )
         lead = services.lead_service.build_lead(lead_data, source="web_demo")
         services.lead_repository.save(lead)
+        if services.manager_notifier.manager_chat_id and settings.TELEGRAM_BOT_TOKEN.strip():
+            bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
+            try:
+                await services.manager_notifier.notify(bot, lead)
+            finally:
+                await bot.session.close()
         return LeadResponse(
             lead_id=lead.id,
             source=lead.source,

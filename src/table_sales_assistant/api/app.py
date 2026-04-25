@@ -24,5 +24,5 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.include_router(create_demo_router(app_services, store))
+    app.include_router(create_demo_router(app_services, store, app_settings))
     return app

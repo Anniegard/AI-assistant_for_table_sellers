@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     MANAGER_TELEGRAM_CHAT_ID: str = ""
     WEB_ALLOWED_ORIGINS: str = "*"
+    WEB_HOST: str = "0.0.0.0"
+    WEB_PORT: int = 8000
     PRODUCTS_PATH: str = "data/products.sample.json"
     KNOWLEDGE_DIR: str = "data/knowledge"
     LEADS_PATH: str = "data/leads.local.json"

@@ -61,6 +61,8 @@ python -m table_sales_assistant.main
 - `ENABLE_TELEGRAM` (default: `true`)
 - `ENABLE_WEB_API` (default: `false`)
 - `WEB_ALLOWED_ORIGINS` (comma-separated origins or `*`)
+- `WEB_HOST` (default: `0.0.0.0`)
+- `WEB_PORT` (default: `8000`)
 - `TELEGRAM_BOT_TOKEN`
 - `OPENAI_API_KEY` (optional)
 - `MANAGER_TELEGRAM_CHAT_ID` (optional)
@@ -89,6 +91,14 @@ python -m table_sales_assistant.main_api
 ENABLE_TELEGRAM=false
 ENABLE_WEB_API=true
 WEB_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+WEB_HOST=0.0.0.0
+WEB_PORT=8000
+```
+
+Production CORS example:
+
+```env
+WEB_ALLOWED_ORIGINS=https://anniland.ru,https://www.anniland.ru
 ```
 
 ## Web API demo endpoints
@@ -117,6 +127,28 @@ curl -X POST http://localhost:8000/api/demo/leads ^
 ```
 
 Важно: OpenAI ключ остается только на backend стороне (env/config) и не передается во frontend.
+
+## Deploy behind nginx
+
+Минимальная схема деплоя для `anniland-web`:
+
+1. FastAPI demo API запускается отдельно (`python -m table_sales_assistant.main_api`) на внутреннем адресе, например `127.0.0.1:8000`.
+2. В `.env` укажите production CORS:
+   - `WEB_ALLOWED_ORIGINS=https://anniland.ru,https://www.anniland.ru`
+3. Nginx проксирует API на backend:
+
+```nginx
+location /api/demo/ {
+    proxy_pass http://127.0.0.1:8000/api/demo/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+4. Frontend `anniland-web` ходит только в `https://anniland.ru/api/demo/*`, без прямого доступа к внутреннему порту FastAPI.
 
 ## Demo journey
 

@@ -14,7 +14,7 @@ def main() -> None:
     if not settings.ENABLE_WEB_API:
         logger.info("Web API transport is disabled by ENABLE_WEB_API=false.")
         return
-    uvicorn.run(create_app(settings), host="0.0.0.0", port=8000)
+    uvicorn.run(create_app(settings), host=settings.WEB_HOST, port=settings.WEB_PORT)
 
 
 if __name__ == "__main__":

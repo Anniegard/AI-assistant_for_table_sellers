@@ -5,6 +5,7 @@
 - Added optional FastAPI demo transport (`/api/demo/*`) with in-memory web sessions, Pydantic API schemas, and endpoint coverage for health, sessions, messages, and lead creation while reusing existing assistant services.
 - Extracted shared service composition into `app_factory` so Telegram and Web API use the same dialogue/recommendation/lead pipeline without duplicating assistant logic.
 - Added transport flags and runtime split (`ENABLE_TELEGRAM`, `ENABLE_WEB_API`, `WEB_ALLOWED_ORIGINS`, `main_api.py`), updated README with Web API usage examples, and kept Telegram transport behavior intact.
+- Polished FastAPI demo transport before web integration: added optional manager notification in `/api/demo/leads`, introduced `WEB_HOST`/`WEB_PORT`, documented local/production CORS examples, added TTL cleanup for in-memory web sessions, and expanded API regression tests for invalid sessions and manager summary.
 
 ## [0.3.9] - 2026-04-25
 
