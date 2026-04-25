@@ -18,10 +18,14 @@ def test_product_recommendation_template_contains_required_blocks() -> None:
         intent=DialogueIntent.RECOMMEND,
     )
     text = response.text.lower()
-    assert "почему подходит:" in text
-    assert "ограничения:" in text
-    assert "уверенность:" in text
-    assert "следующий шаг: сравнить варианты." in text
+    assert "рекомендую:" in text
+    assert "demo desk 1 — 79 900 ₽".lower() in text
+    assert "подходит под два монитора" in text
+    assert "важно учесть: ширина меньше желаемой" in text
+    assert "почему подходит:" not in text
+    assert "ограничения:" not in text
+    assert "уверенность:" not in text
+    assert "следующий шаг:" not in text
     assert response.cta == "Сравнить варианты"
 
 
