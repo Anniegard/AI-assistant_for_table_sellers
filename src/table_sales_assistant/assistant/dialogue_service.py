@@ -1,24 +1,104 @@
-from dataclasses import asdict
+from dataclasses import fields
 
+from table_sales_assistant.assistant.collection import (
+    ASK_BUDGET_STEP_TEXT,
+    ASK_HEIGHT_STEP_TEXT,
+    ASK_MONITORS_STEP_TEXT,
+    ASK_PC_STEP_TEXT,
+    ASK_SCENARIO_TEXT,
+    ASK_SIZE_STEP_TEXT,
+    LABEL_TO_SCENARIO,
+    STEP_BUDGET,
+    STEP_HEIGHT,
+    STEP_MONITORS,
+    STEP_PC,
+    STEP_SCENARIO,
+    STEP_SIZE,
+)
+from table_sales_assistant.assistant.free_text_parser import (
+    ACTIVE_STEP_BUDGET,
+    ACTIVE_STEP_HEIGHT,
+    ACTIVE_STEP_MONITORS,
+    ACTIVE_STEP_SIZE,
+    ParsedSignals,
+    is_dismissal_reply,
+    parse_budget_from_text,
+    parse_internal_scenario,
+    parse_signals,
+)
 from table_sales_assistant.assistant.intent_router import IntentRouter
 from table_sales_assistant.assistant.models import (
     AssistantGoal,
     AssistantResponse,
     DialogueContext,
     DialogueIntent,
-)
-from table_sales_assistant.assistant.parsing import (
-    extract_budget_range,
-    extract_has_pc_case,
-    extract_height_cm,
-    extract_monitors_count,
-    extract_use_case,
+    KnownClientParams,
 )
 from table_sales_assistant.assistant.response_builder import ResponseBuilder
+from table_sales_assistant.assistant.scenario_labels import scenario_label_ru
 from table_sales_assistant.catalog.recommender import RecommendationQuery
+from table_sales_assistant.catalog.scenario_mapping import catalog_tags_for_scenario
 from table_sales_assistant.services.explanation_service import ExplanationService
 from table_sales_assistant.services.faq_service import FAQService
 from table_sales_assistant.services.recommendation_service import RecommendationService
+
+
+def _first_missing_collection_step(kp: KnownClientParams) -> str | None:
+    if kp.use_case is None:
+        return STEP_SCENARIO
+    if kp.height_cm is None and not kp.height_unspecified:
+        return STEP_HEIGHT
+    if (
+        kp.budget_max is None
+        and kp.budget_min is None
+        and not kp.budget_unspecified
+    ):
+        return STEP_BUDGET
+    if kp.monitors_count is None and not kp.monitors_unspecified:
+        return STEP_MONITORS
+    if kp.has_pc_case is None and not kp.pc_unspecified:
+        return STEP_PC
+    if (
+        not kp.no_size_limit
+        and kp.max_width_cm is None
+        and kp.preferred_width_cm is None
+        and not kp.size_unspecified
+    ):
+        return STEP_SIZE
+    return None
+
+
+def _parser_active_step_for_collection(missing: str | None) -> str | None:
+    if missing == STEP_HEIGHT:
+        return ACTIVE_STEP_HEIGHT
+    if missing == STEP_BUDGET:
+        return ACTIVE_STEP_BUDGET
+    if missing == STEP_MONITORS:
+        return ACTIVE_STEP_MONITORS
+    if missing == STEP_SIZE:
+        return ACTIVE_STEP_SIZE
+    return None
+
+
+def _height_ergonomic_sentence(height_cm: int | None) -> str:
+    if height_cm is None:
+        return ""
+    if 165 <= height_cm <= 185:
+        return (
+            " Ваш рост подходит под большинство регулируемых столов, поэтому основной выбор "
+            "зависит от бюджета, размера, нагрузки и сценария."
+        )
+    if height_cm >= 190:
+        return (
+            " При таком росте важно проверить максимальную высоту и устойчивость "
+            "в верхнем положении."
+        )
+    if height_cm < 165:
+        return (
+            " При таком росте особенно важна минимальная высота, чтобы стол был удобен "
+            "в сидячем положении."
+        )
+    return ""
 
 
 class DialogueService:
@@ -36,30 +116,138 @@ class DialogueService:
         self.explanation_service = explanation_service
         self.intent_router = intent_router or IntentRouter()
 
-    def _update_context_from_text(self, text: str, context: DialogueContext) -> None:
-        height = extract_height_cm(text)
-        if height is not None:
-            context.known_params.height_cm = height
-        monitors = extract_monitors_count(text)
-        if monitors is not None:
-            context.known_params.monitors_count = monitors
-        budget_min, budget_max = extract_budget_range(text)
-        if budget_min is not None:
-            context.known_params.budget_min = budget_min
-        if budget_max is not None:
-            context.known_params.budget_max = budget_max
-        use_case = extract_use_case(text)
-        if use_case is not None:
-            context.known_params.use_case = use_case
-        has_pc_case = extract_has_pc_case(text)
-        if has_pc_case is not None:
-            context.known_params.has_pc_case = has_pc_case
+    def _reset_session(self, context: DialogueContext) -> None:
+        context.known_params = KnownClientParams()
+        context.recommended_products = []
+        context.recent_questions = []
+        context.recent_messages = []
+        context.collection_answered.clear()
+        context.guide_active = True
+        context.low_budget_warned = False
+        context.awaiting_budget_after_cheaper = False
 
-    def _missing_params(self, context: DialogueContext) -> list[str]:
+    def _merge_signals_into_params(
+        self, context: DialogueContext, signals: ParsedSignals, raw_text: str
+    ) -> None:
+        kp = context.known_params
+        if signals.height_cm is not None:
+            kp.height_cm = signals.height_cm
+            kp.height_unspecified = False
+        if signals.budget_min is not None:
+            kp.budget_min = signals.budget_min
+        if signals.budget_max is not None:
+            kp.budget_max = signals.budget_max
+            kp.budget_exact_rub = signals.budget_exact
+        if signals.monitors_count is not None:
+            kp.monitors_count = signals.monitors_count
+            kp.monitors_unspecified = False
+        if signals.has_pc_on_table is not None:
+            kp.has_pc_case = signals.has_pc_on_table
+            kp.pc_unspecified = False
+        if signals.internal_scenario is not None:
+            kp.use_case = signals.internal_scenario
+        if signals.preferred_width_cm is not None:
+            kp.preferred_width_cm = signals.preferred_width_cm
+        if signals.preferred_depth_cm is not None:
+            kp.preferred_depth_cm = signals.preferred_depth_cm
+        if signals.max_width_cm is not None:
+            kp.max_width_cm = signals.max_width_cm
+        if signals.max_depth_cm is not None:
+            kp.max_depth_cm = signals.max_depth_cm
+        if signals.no_size_limit:
+            kp.no_size_limit = True
+            kp.size_unspecified = False
+        if signals.heavy_setup:
+            kp.heavy_setup = True
+
+        mapped = LABEL_TO_SCENARIO.get((raw_text or "").strip().lower())
+        if mapped is not None:
+            kp.use_case = mapped
+        elif parse_internal_scenario(raw_text):
+            kp.use_case = parse_internal_scenario(raw_text)
+
+    def _apply_dismissal_for_current_step(
+        self, context: DialogueContext, text: str, signals: ParsedSignals
+    ) -> None:
+        if not is_dismissal_reply(text):
+            return
+        kp = context.known_params
+        missing = _first_missing_collection_step(kp)
+        if missing == STEP_SCENARIO and signals.internal_scenario is None:
+            kp.use_case = "unknown"
+        elif missing == STEP_HEIGHT and signals.height_cm is None:
+            kp.height_unspecified = True
+        elif missing == STEP_BUDGET and signals.budget_max is None and signals.budget_min is None:
+            kp.budget_unspecified = True
+        elif missing == STEP_MONITORS and signals.monitors_count is None:
+            kp.monitors_unspecified = True
+        elif missing == STEP_PC and signals.has_pc_on_table is None:
+            kp.pc_unspecified = True
+        elif missing == STEP_SIZE:
+            kp.size_unspecified = True
+
+    def _apply_combined_free_text_shortcut(self, context: DialogueContext, text: str) -> None:
+        lowered = text.lower()
+        kp = context.known_params
+        _bm, bx_budget, _ = parse_budget_from_text(text)
+        rich = "рост" in lowered and (
+            "бюджет" in lowered or "руб" in lowered or "тыс" in lowered or bool(bx_budget)
+        )
+        pick_desk = "подбери" in lowered or "подобрать" in lowered or "нужен стол" in lowered
+        if not (rich or (pick_desk and kp.height_cm and (kp.budget_max or kp.budget_min))):
+            return
+        if kp.use_case is None and pick_desk:
+            kp.use_case = "unknown"
+        if kp.monitors_count is None and not kp.monitors_unspecified:
+            kp.monitors_unspecified = True
+        if kp.has_pc_case is None and not kp.pc_unspecified:
+            kp.pc_unspecified = True
+        if (
+            not kp.no_size_limit
+            and kp.max_width_cm is None
+            and kp.preferred_width_cm is None
+            and not kp.size_unspecified
+        ):
+            kp.size_unspecified = True
+
+    def _update_context_from_text(self, text: str, context: DialogueContext) -> None:
+        missing = _first_missing_collection_step(context.known_params)
+        active = _parser_active_step_for_collection(
+            missing if context.guide_active and not context.recommended_products else None
+        )
+        signals = parse_signals(text, active_step=active)
+        self._merge_signals_into_params(context, signals, text)
+        self._apply_dismissal_for_current_step(context, text, signals)
+        self._apply_combined_free_text_shortcut(context, text)
+        self._apply_partial_params_completion(context, text)
+
+    def _apply_partial_params_completion(self, context: DialogueContext, text: str) -> None:
+        bm, bx, _ = parse_budget_from_text(text)
+        if bm is None and bx is None:
+            return
+        kp = context.known_params
+        if not kp.height_cm:
+            return
+        if kp.use_case is None:
+            kp.use_case = "unknown"
+        if kp.monitors_count is None and not kp.monitors_unspecified:
+            kp.monitors_unspecified = True
+        if kp.has_pc_case is None and not kp.pc_unspecified:
+            kp.pc_unspecified = True
+        if (
+            not kp.no_size_limit
+            and kp.max_width_cm is None
+            and kp.preferred_width_cm is None
+            and not kp.size_unspecified
+        ):
+            kp.size_unspecified = True
+
+    def _missing_legacy_budget_height(self, context: DialogueContext) -> list[str]:
         missing: list[str] = []
-        if context.known_params.budget_max is None:
+        kp = context.known_params
+        if not kp.budget_unspecified and kp.budget_max is None and kp.budget_min is None:
             missing.append("бюджет")
-        if context.known_params.height_cm is None:
+        if not kp.height_unspecified and kp.height_cm is None:
             missing.append("рост")
         return missing
 
@@ -67,9 +255,9 @@ class DialogueService:
     def _build_missing_params_prompt(missing: list[str]) -> str:
         missing_set = set(missing)
         if missing_set == {"бюджет"}:
-            return "Укажите бюджет в рублях, например: 50000."
+            return ASK_BUDGET_STEP_TEXT
         if missing_set == {"рост"}:
-            return "Укажите ваш рост в сантиметрах, например: 190."
+            return ASK_HEIGHT_STEP_TEXT
         return "Напишите рост и бюджет, например: рост 190, бюджет 50000."
 
     @staticmethod
@@ -91,14 +279,13 @@ class DialogueService:
 
     def _motor_faq_answer(self, context: DialogueContext) -> str:
         details: list[str] = []
-        if context.known_params.height_cm:
-            details.append(f"рост {context.known_params.height_cm} см")
-        if context.known_params.budget_max:
-            details.append(f"бюджет до {context.known_params.budget_max:,} руб".replace(",", " "))
-        if context.known_params.use_case == "home_office":
-            details.append("сценарий: домашнее рабочее место")
-        elif context.known_params.use_case:
-            details.append(f"сценарий: {context.known_params.use_case}")
+        kp = context.known_params
+        if kp.height_cm:
+            details.append(f"рост {kp.height_cm} см")
+        if kp.budget_max:
+            details.append(f"бюджет до {kp.budget_max:,} руб".replace(",", " "))
+        if kp.use_case:
+            details.append(f"сценарий: {scenario_label_ru(kp.use_case)}")
         intro = f"С учетом ваших параметров ({', '.join(details)}), " if details else ""
         return (
             f"{intro}два мотора обычно дают более стабильный подъем, выше "
@@ -119,31 +306,73 @@ class DialogueService:
         return (category or "").strip().lower() in cls._ACCESSORY_CATEGORIES
 
     def _build_recommendation_query(self, context: DialogueContext) -> RecommendationQuery:
-        monitors_count = context.known_params.monitors_count or 2
+        kp = context.known_params
+        monitors = kp.monitors_count if kp.monitors_count is not None else 2
+        cap: int | None
+        if kp.budget_unspecified:
+            cap = None
+        else:
+            cap = kp.budget_max
+            if cap is None and kp.budget_min is not None:
+                cap = int(kp.budget_min * 1.5)
         return RecommendationQuery(
-            budget=context.known_params.budget_max,
-            user_height_cm=context.known_params.height_cm,
-            monitors_count=monitors_count,
-            use_case=context.known_params.use_case,
-            has_pc_case=context.known_params.has_pc_case,
+            budget=cap,
+            budget_min_rub=kp.budget_min,
+            budget_max_rub=None if kp.budget_unspecified else kp.budget_max,
+            user_height_cm=kp.height_cm,
+            ignore_user_height_hard_filter=bool(kp.height_unspecified),
+            monitors_count=monitors,
+            use_case=kp.use_case or "unknown",
+            has_pc_case=kp.has_pc_case,
+            heavy_setup=bool(kp.heavy_setup),
+            max_width_cm=kp.max_width_cm,
+            max_depth_cm=kp.max_depth_cm,
+            no_size_limit=kp.no_size_limit,
             include_accessories=False,
             strict_budget=True,
         )
 
     @staticmethod
+    def _sanitize_query_context(query: RecommendationQuery) -> dict[str, object]:
+        data = {f.name: getattr(query, f.name) for f in fields(query)}
+        data["scenario"] = scenario_label_ru(query.use_case)
+        data.pop("use_case", None)
+        return data
+
+    @staticmethod
     def _known_params_for_text(context: DialogueContext) -> list[str]:
+        kp = context.known_params
         params: list[str] = []
-        if context.known_params.height_cm:
-            params.append(f"рост {context.known_params.height_cm} см")
-        if context.known_params.budget_max:
-            params.append(f"бюджет до {context.known_params.budget_max:,} ₽".replace(",", " "))
-        if context.known_params.monitors_count:
-            params.append(f"мониторов: {context.known_params.monitors_count}")
-        if context.known_params.use_case:
-            params.append(f"сценарий: {context.known_params.use_case}")
-        if context.known_params.city:
-            params.append(f"город: {context.known_params.city}")
+        if kp.height_cm:
+            params.append(f"рост {kp.height_cm} см")
+        if kp.budget_max or kp.budget_min:
+            if kp.budget_min and kp.budget_max:
+                params.append(
+                    f"бюджет {kp.budget_min:,}–{kp.budget_max:,} ₽".replace(",", " ")
+                )
+            elif kp.budget_max:
+                params.append(f"бюджет до {kp.budget_max:,} ₽".replace(",", " "))
+            elif kp.budget_min:
+                params.append(f"бюджет от {kp.budget_min:,} ₽".replace(",", " "))
+        if kp.monitors_count is not None:
+            params.append(f"мониторов: {kp.monitors_count}")
+        if kp.use_case:
+            params.append(f"сценарий: {scenario_label_ru(kp.use_case)}")
+        if kp.city:
+            params.append(f"город: {kp.city}")
         return params
+
+    def _next_collection_prompt(self, context: DialogueContext) -> str | None:
+        step = _first_missing_collection_step(context.known_params)
+        prompts = {
+            STEP_SCENARIO: ASK_SCENARIO_TEXT,
+            STEP_HEIGHT: ASK_HEIGHT_STEP_TEXT,
+            STEP_BUDGET: ASK_BUDGET_STEP_TEXT,
+            STEP_MONITORS: ASK_MONITORS_STEP_TEXT,
+            STEP_PC: ASK_PC_STEP_TEXT,
+            STEP_SIZE: ASK_SIZE_STEP_TEXT,
+        }
+        return prompts.get(step or "")
 
     def _format_main_recommendation_text(
         self,
@@ -157,16 +386,19 @@ class DialogueService:
         intro_parts = self._known_params_for_text(context)
         if intro_parts:
             lines.append(f"Понял: {', '.join(intro_parts)}.")
+        ergo = _height_ergonomic_sentence(context.known_params.height_cm)
+        if ergo.strip():
+            lines.append(ergo.strip())
         if cheaper_intro:
             lines.append(cheaper_intro)
-        missing_monitors_info = context.known_params.monitors_count is None
-        if missing_monitors_info:
+        kp = context.known_params
+        if kp.monitors_count is None and kp.monitors_unspecified:
+            pass
+        elif kp.monitors_count is None:
             lines.append(
-                "Количество мониторов вы не указали, поэтому сделаю предварительный "
-                "подбор для 1-2 мониторов."
-            )
-            lines.append(
-                "Если у вас 2+ монитора, лучше дополнительно уточнить размер столешницы."
+                "Пока сделаю предварительный подбор для 1–2 мониторов. "
+                "Если у вас два монитора или системный блок будет стоять на столе, "
+                "лучше выбрать модель с двумя моторами и запасом по грузоподъёмности."
             )
         recommendation_items: list[dict[str, str]] = []
         for item in ranked[:3]:
@@ -193,14 +425,26 @@ class DialogueService:
         return response.text
 
     def _build_cheaper_response(
-        self, context: DialogueContext, intent: DialogueIntent
+        self, context: DialogueContext, intent: DialogueIntent, user_text: str
     ) -> AssistantResponse:
+        bm, bx, _ = parse_budget_from_text(user_text)
+        has_new_budget = bm is not None or bx is not None
+
+        if has_new_budget:
+            if bm is not None:
+                context.known_params.budget_min = bm
+            if bx is not None:
+                context.known_params.budget_max = bx
+            context.awaiting_budget_after_cheaper = False
+            return self._rerun_recommendation(context, intent)
+
         if not context.recommended_products:
             return ResponseBuilder.plain(
-                "Уточните параметры, и я сразу подберу более бюджетные варианты: рост и бюджет.",
+                "В каком бюджете теперь смотреть? Например: до 50 000 ₽ или 40–60к.",
                 goal=AssistantGoal.ASK_MISSING_PARAM,
                 intent=intent,
             )
+
         previous_products = self.recommendation_service.get_products_by_ids(
             context.recommended_products
         )
@@ -234,7 +478,7 @@ class DialogueService:
                 (
                     "Дешевле подходящих регулируемых столов в каталоге сейчас нет. "
                     "Самый близкий бюджетный вариант уже в последней подборке. "
-                    "Можно снизить цену за счет одного мотора или меньшей столешницы."
+                    "Можно снизить цену за счёт одного мотора или меньшей столешницы."
                 ),
                 goal=AssistantGoal.HANDLE_OBJECTION,
                 intent=intent,
@@ -243,7 +487,7 @@ class DialogueService:
         context.recommended_products = [item.product.id for item in ranked]
         explanations = self.explanation_service.explain_products(
             [item.product for item in ranked],
-            query_context=asdict(query),
+            query_context=self._sanitize_query_context(query),
         )
         cheaper_intro = (
             f"Посмотрел варианты дешевле. В каталоге есть столы до {target_max_price:,} ₽."
@@ -261,6 +505,63 @@ class DialogueService:
             cta="Сравнить варианты",
         )
 
+    def _rerun_recommendation(
+        self, context: DialogueContext, intent: DialogueIntent
+    ) -> AssistantResponse:
+        query = self._build_recommendation_query(context)
+        ranked = self.recommendation_service.get_ranked_recommendations(query)
+        if not ranked:
+            return ResponseBuilder.no_exact_match(
+                blocking_constraint="текущая комбинация параметров",
+                alternatives=[
+                    "Ослабить одно ограничение и показать ближайшие варианты",
+                    "Уточнить приоритет: цена, размер или устойчивость",
+                ],
+                intent=intent,
+                cta="Позвать менеджера",
+            )
+        context.recommended_products = [item.product.id for item in ranked]
+        explanations = self.explanation_service.explain_products(
+            [item.product for item in ranked],
+            query_context=self._sanitize_query_context(query),
+        )
+        text = self._format_main_recommendation_text(context, ranked, explanations)
+        return ResponseBuilder.with_cta(
+            text,
+            goal=AssistantGoal.RECOMMEND,
+            intent=intent,
+            cta="Сравнить варианты",
+        )
+
+    def _post_rec_intent_override(
+        self, text: str, intent: DialogueIntent, context: DialogueContext
+    ) -> DialogueIntent:
+        if not context.recommended_products:
+            return intent
+        lowered = text.lower()
+        bm, bx, _ = parse_budget_from_text(text)
+        if (bm is not None or bx is not None) and (
+            "бюджет" in lowered
+            or "руб" in lowered
+            or "₽" in lowered
+            or "тыс" in lowered
+            or "к" in lowered.replace(" ", "")
+            or "до " in lowered
+            or "от " in lowered
+            or "смотрим" in lowered
+        ):
+            return DialogueIntent.CHANGE_BUDGET
+        if parse_internal_scenario(text) and any(
+            w in lowered for w in ("вообще", "теперь", "передумал", "на самом деле", "это для")
+        ):
+            return DialogueIntent.CHANGE_SCENARIO
+        if (
+            ("мест" in lowered or "ширин" in lowered or "размер" in lowered)
+            and intent == DialogueIntent.UNKNOWN
+        ):
+            return DialogueIntent.CHANGE_SIZE
+        return intent
+
     @staticmethod
     def _format_price(value: int) -> str:
         if value <= 0:
@@ -272,8 +573,8 @@ class DialogueService:
     ) -> AssistantResponse:
         if not context.recommended_products:
             return ResponseBuilder.plain(
-                "Сначала подберу варианты под ваш рост и бюджет. "
-                "Напишите, например: рост 190, бюджет 50000.",
+                "Сначала подберу варианты под ваши параметры. "
+                "Нажмите «Подобрать стол» или опишите задачу.",
                 goal=AssistantGoal.ASK_MISSING_PARAM,
                 intent=intent,
             )
@@ -287,7 +588,7 @@ class DialogueService:
         if not ranked:
             return ResponseBuilder.plain(
                 "Сейчас в контексте нет последних рекомендованных столов. "
-                "Давайте сначала обновим подбор по росту и бюджету.",
+                "Давайте сначала обновим подбор.",
                 goal=AssistantGoal.ASK_MISSING_PARAM,
                 intent=intent,
             )
@@ -299,11 +600,9 @@ class DialogueService:
         by_balance = sorted(
             ranked, key=lambda item: (item.price <= 0, item.price, -item.motors_count)
         )
-        budget_hint = (
-            f" и бюджета до {context.known_params.budget_max:,} ₽".replace(",", " ")
-            if context.known_params.budget_max
-            else ""
-        )
+        budget_hint = ""
+        if context.known_params.budget_max:
+            budget_hint = f" и бюджета до {context.known_params.budget_max:,} ₽".replace(",", " ")
         if context.known_params.height_cm:
             height_hint = f"Для вашего роста {context.known_params.height_cm} см{budget_hint}"
         else:
@@ -331,39 +630,84 @@ class DialogueService:
             intent=intent,
         )
 
+    def _run_recommendation_block(
+        self, context: DialogueContext, intent: DialogueIntent
+    ) -> AssistantResponse:
+        query = self._build_recommendation_query(context)
+        ranked = self.recommendation_service.get_ranked_recommendations(query)
+        if not ranked:
+            return ResponseBuilder.no_exact_match(
+                blocking_constraint=(
+                    "жёсткий лимит бюджета"
+                    if context.known_params.budget_max
+                    else "текущая комбинация параметров"
+                ),
+                alternatives=[
+                    "Ослабить одно ограничение и показать ближайшие варианты",
+                    "Уточнить приоритет: цена, размер или устойчивость",
+                ],
+                intent=intent,
+                cta="Позвать менеджера",
+            )
+        stretch_note = ""
+        for item in ranked:
+            if getattr(item, "is_budget_stretch", False):
+                stretch_note = (
+                    "Один из вариантов немного выше бюджета, но я добавил его как запасной, "
+                    "потому что он лучше подходит под ваши условия."
+                )
+                break
+        context.recommended_products = [item.product.id for item in ranked]
+        products = [item.product for item in ranked]
+        explanations = self.explanation_service.explain_products(
+            products,
+            query_context=self._sanitize_query_context(query),
+        )
+        text = self._format_main_recommendation_text(
+            context, ranked, explanations, cheaper_intro=stretch_note or None
+        )
+        context.guide_active = False
+        return ResponseBuilder.with_cta(
+            text,
+            goal=AssistantGoal.RECOMMEND,
+            intent=intent,
+            cta="Сравнить варианты",
+        )
+
     def handle(self, text: str, context: DialogueContext) -> AssistantResponse:
         context.add_user_message(text)
         if text.strip():
             context.recent_questions.append(text.strip())
             context.recent_questions = context.recent_questions[-10:]
+
         self._update_context_from_text(text, context)
         intent = self.intent_router.route(text)
+        intent = self._post_rec_intent_override(text, intent, context)
 
         if intent == DialogueIntent.RESTART:
+            self._reset_session(context)
             return self._with_history(
                 context,
                 AssistantResponse(
                     text=(
-                        "Начинаем заново. Напишите задачу и параметры: "
-                        "бюджет, рост, мониторы и сценарий."
+                        "Начинаем заново. Я задам несколько коротких вопросов "
+                        "или можно сразу написать параметры одной фразой."
                     ),
                     goal=AssistantGoal.ASK_MISSING_PARAM,
                     intent=intent,
                     reset_context=True,
                 ),
             )
+
         if intent in (DialogueIntent.LEAVE_LEAD, DialogueIntent.HANDOFF_MANAGER):
             known: list[str] = []
-            if context.known_params.height_cm:
-                known.append(f"рост {context.known_params.height_cm} см")
-            if context.known_params.budget_max:
-                known.append(
-                    f"бюджет до {context.known_params.budget_max:,} руб".replace(",", " ")
-                )
-            if context.known_params.use_case == "home_office":
-                known.append("сценарий: домашнее рабочее место")
-            elif context.known_params.use_case:
-                known.append(f"сценарий: {context.known_params.use_case}")
+            kp = context.known_params
+            if kp.height_cm:
+                known.append(f"рост {kp.height_cm} см")
+            if kp.budget_max:
+                known.append(f"бюджет до {kp.budget_max:,} руб".replace(",", " "))
+            if kp.use_case:
+                known.append(f"сценарий: {scenario_label_ru(kp.use_case)}")
             if context.recommended_products:
                 lead_text = "Отлично, помогу оставить заявку менеджеру. Как вас зовут?"
             elif known:
@@ -382,6 +726,7 @@ class DialogueService:
                     start_lead_flow=True,
                 ),
             )
+
         if intent in (DialogueIntent.FAQ, DialogueIntent.DELIVERY_WARRANTY_MATERIALS):
             if self._is_motor_faq(text):
                 return self._with_history(
@@ -416,8 +761,102 @@ class DialogueService:
                     cta="Позвать менеджера",
                 ),
             )
+
         if intent == DialogueIntent.COMPARE:
             return self._with_history(context, self._build_compare_response(context, intent))
+
+        if intent == DialogueIntent.CLARIFY_RECOMMENDATION:
+            if not context.recommended_products:
+                return self._with_history(
+                    context,
+                    ResponseBuilder.plain(
+                        "Сначала подберу 2–3 модели — и объясню, почему они подходят.",
+                        goal=AssistantGoal.ASK_MISSING_PARAM,
+                        intent=intent,
+                    ),
+                )
+            return self._with_history(
+                context,
+                ResponseBuilder.with_cta(
+                    "Я советую эти варианты по сочетанию цены, устойчивости, грузоподъёмности "
+                    "и размера столешницы под ваш сценарий. Если хотите, сравню их по пунктам "
+                    "или подберу альтернативу.",
+                    goal=AssistantGoal.ANSWER_QUESTION,
+                    intent=intent,
+                    cta="Сравнить варианты",
+                ),
+            )
+
+        if intent == DialogueIntent.CHANGE_BUDGET:
+            bm, bx, _ = parse_budget_from_text(text)
+            if bm is not None:
+                context.known_params.budget_min = bm
+            if bx is not None:
+                context.known_params.budget_max = bx
+            return self._with_history(context, self._rerun_recommendation(context, intent))
+
+        if intent == DialogueIntent.CHANGE_SCENARIO:
+            sc = parse_internal_scenario(text)
+            if sc:
+                context.known_params.use_case = sc
+            if context.recommended_products:
+                return self._with_history(context, self._rerun_recommendation(context, intent))
+            return self._with_history(
+                context,
+                ResponseBuilder.plain(
+                    f"Принял сценарий: {scenario_label_ru(context.known_params.use_case)}. "
+                    "Продолжим подбор.",
+                    goal=AssistantGoal.ASK_MISSING_PARAM,
+                    intent=intent,
+                ),
+            )
+
+        if intent == DialogueIntent.CHANGE_SIZE:
+            sig = parse_signals(text, active_step=ACTIVE_STEP_SIZE)
+            self._merge_signals_into_params(context, sig, text)
+            if context.recommended_products:
+                return self._with_history(context, self._rerun_recommendation(context, intent))
+
+        if intent == DialogueIntent.MORE_PREMIUM:
+            if not context.recommended_products:
+                return self._with_history(
+                    context,
+                    ResponseBuilder.plain(
+                        "Сначала подберу базовые варианты, затем сможем поднять планку по классу.",
+                        goal=AssistantGoal.ASK_MISSING_PARAM,
+                        intent=intent,
+                    ),
+                )
+            prev = self.recommendation_service.get_products_by_ids(context.recommended_products)
+            prices = [p.price for p in prev if p.price > 0]
+            floor = max(prices) + 1 if prices else 50_000
+            context.known_params.budget_min = floor
+            context.known_params.budget_max = None
+            q = self._build_recommendation_query(context)
+            q.min_price_override = floor
+            q.budget_max_rub = None
+            q.budget = None
+            ranked = self.recommendation_service.get_ranked_recommendations(q)
+            if ranked:
+                context.recommended_products = [item.product.id for item in ranked]
+                explanations = self.explanation_service.explain_products(
+                    [item.product for item in ranked],
+                    query_context=self._sanitize_query_context(q),
+                )
+                intro = "Подобрал варианты дороже — с упором на запас по качеству и нагрузке."
+                txt = intro + "\n\n" + self._format_main_recommendation_text(
+                    context, ranked, explanations
+                )
+                return self._with_history(
+                    context,
+                    ResponseBuilder.with_cta(
+                        txt,
+                        goal=AssistantGoal.RECOMMEND,
+                        intent=intent,
+                        cta="Сравнить варианты",
+                    ),
+                )
+
         if intent == DialogueIntent.ACCESSORY_REQUEST:
             products = self.recommendation_service.repository.load_products()
             accessories = [
@@ -425,14 +864,11 @@ class DialogueService:
                 for product in products
                 if product.in_stock and self._is_accessory(product.category)
             ]
-            if context.known_params.use_case:
-                use_case_filtered = [
-                    product
-                    for product in accessories
-                    if context.known_params.use_case in product.use_cases
-                ]
-                if use_case_filtered:
-                    accessories = use_case_filtered
+            tags = catalog_tags_for_scenario(context.known_params.use_case)
+            if tags:
+                filtered = [p for p in accessories if tags.intersection(p.use_cases)]
+                if filtered:
+                    accessories = filtered
             accessories.sort(key=lambda item: item.price)
             if not accessories:
                 return self._with_history(
@@ -457,27 +893,79 @@ class DialogueService:
                     cta="Подобрать стол",
                 ),
             )
+
         if intent == DialogueIntent.SMALL_TALK:
             return self._with_history(
                 context,
                 ResponseBuilder.with_cta(
-                    (
-                        "Я помогу выбрать регулируемый стол под вашу задачу. "
-                        "Напишите параметры: рост и бюджет (мониторы - по желанию)."
-                    ),
+                    "Я помогу выбрать регулируемый стол под вашу задачу. "
+                    "Можно ответить на короткие вопросы или написать всё одной фразой.",
                     goal=AssistantGoal.ASK_MISSING_PARAM,
                     intent=intent,
                     cta="Подобрать стол",
                 ),
             )
 
+        if intent == DialogueIntent.OBJECTION_PRICE:
+            return self._with_history(
+                context, self._build_cheaper_response(context, intent, text)
+            )
+
+        if (
+            context.guide_active
+            and not context.recommended_products
+            and intent
+            not in (
+                DialogueIntent.FAQ,
+                DialogueIntent.COMPARE,
+                DialogueIntent.CLARIFY_RECOMMENDATION,
+            )
+        ):
+            missing_col = _first_missing_collection_step(context.known_params)
+            if missing_col is not None:
+                prompt = self._next_collection_prompt(context)
+                if prompt:
+                    return self._with_history(
+                        context,
+                        ResponseBuilder.plain(
+                            prompt,
+                            goal=AssistantGoal.ASK_MISSING_PARAM,
+                            intent=intent,
+                        ),
+                    )
+
+            kp = context.known_params
+            if (
+                (kp.budget_max is not None or kp.budget_min is not None)
+                and kp.budget_max is not None
+                and kp.budget_max < 15_000
+                and not context.low_budget_warned
+                and not kp.budget_unspecified
+            ):
+                context.low_budget_warned = True
+                return self._with_history(
+                    context,
+                    ResponseBuilder.plain(
+                        "Уточните, пожалуйста: такая сумма редко хватает "
+                        "на новый регулируемый стол в демо-каталоге. "
+                        "Имелось в виду, например, до 50 000 ₽ или другая величина?",
+                        goal=AssistantGoal.ASK_MISSING_PARAM,
+                        intent=intent,
+                    ),
+                )
+
         if intent in (
             DialogueIntent.RECOMMEND,
             DialogueIntent.UNKNOWN,
             DialogueIntent.CLARIFY_RECOMMENDATION,
         ):
-            missing = self._missing_params(context)
-            if missing and intent in (DialogueIntent.RECOMMEND, DialogueIntent.UNKNOWN):
+            missing = self._missing_legacy_budget_height(context)
+            if (
+                missing
+                and intent in (DialogueIntent.RECOMMEND, DialogueIntent.UNKNOWN)
+                and not context.recommended_products
+                and not context.guide_active
+            ):
                 return self._with_history(
                     context,
                     ResponseBuilder.plain(
@@ -486,84 +974,24 @@ class DialogueService:
                         intent=intent,
                     ),
                 )
-            query = self._build_recommendation_query(context)
-            ranked = self.recommendation_service.get_ranked_recommendations(query)
-            if not ranked:
-                over_budget_ranked: list = []
-                if context.known_params.budget_max:
-                    fallback_query = self._build_recommendation_query(context)
-                    fallback_query.strict_budget = False
-                    fallback_query.budget = None
-                    fallback_query.min_price_override = context.known_params.budget_max + 1
-                    over_budget_ranked = self.recommendation_service.get_ranked_recommendations(
-                        fallback_query
-                    )
-                    over_budget_ranked.sort(
-                        key=lambda item: (
-                            item.product.price <= 0,
-                            item.product.price if item.product.price > 0 else 10**9,
-                        )
-                    )
-                if over_budget_ranked:
-                    nearest = over_budget_ranked[:1]
-                    context.recommended_products = [item.product.id for item in nearest]
-                    explanations = self.explanation_service.explain_products(
-                        [item.product for item in nearest],
-                        query_context=asdict(query),
-                    )
-                    warning = (
-                        "В указанном бюджете вариантов не нашлось. "
-                        "Покажу ближайший вариант чуть выше бюджета с пометкой."
-                    )
-                    text = self._format_main_recommendation_text(
-                        context,
-                        nearest,
-                        explanations,
-                        cheaper_intro=warning,
-                    )
-                    return self._with_history(
-                        context,
-                        ResponseBuilder.with_cta(
-                            text,
-                            goal=AssistantGoal.RECOMMEND,
-                            intent=intent,
-                            cta="Сравнить варианты",
-                        ),
-                    )
+
+            collection_done = _first_missing_collection_step(context.known_params) is None
+            if collection_done or not context.guide_active:
+                rec = self._run_recommendation_block(context, intent)
+                if rec.goal == AssistantGoal.RECOMMEND:
+                    return self._with_history(context, rec)
+                return self._with_history(context, rec)
+
+            prompt = self._next_collection_prompt(context)
+            if prompt:
                 return self._with_history(
                     context,
-                    ResponseBuilder.no_exact_match(
-                        blocking_constraint=(
-                            "жесткий лимит бюджета"
-                            if context.known_params.budget_max
-                            else "текущая комбинация параметров"
-                        ),
-                        alternatives=[
-                            "Ослабить одно ограничение и показать ближайшие варианты",
-                            "Уточнить приоритет: цена, размер или устойчивость",
-                        ],
+                    ResponseBuilder.plain(
+                        prompt,
+                        goal=AssistantGoal.ASK_MISSING_PARAM,
                         intent=intent,
-                        cta="Позвать менеджера",
                     ),
                 )
-            context.recommended_products = [item.product.id for item in ranked]
-            products = [item.product for item in ranked]
-            explanations = self.explanation_service.explain_products(
-                products,
-                query_context=asdict(query),
-            )
-            text = self._format_main_recommendation_text(context, ranked, explanations)
-            return self._with_history(
-                context,
-                ResponseBuilder.with_cta(
-                    text,
-                    goal=AssistantGoal.RECOMMEND,
-                    intent=intent,
-                    cta="Сравнить варианты",
-                ),
-            )
-        if intent == DialogueIntent.OBJECTION_PRICE:
-            return self._with_history(context, self._build_cheaper_response(context, intent))
 
         return self._with_history(
             context,

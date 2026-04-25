@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.7] - 2026-04-26
+
+- Reworked recommendation UX to a unified guided flow for Telegram and Web API (`scenario -> height -> budget -> monitors -> pc_on_desk -> size`) with smarter step-aware free-text parsing.
+- Upgraded recommendation logic with scenario-tag mapping, stronger monitor/PC/size/height scoring, budget range handling, and +15% stretch fallback marked as tradeoff instead of silent hard filtering.
+- Added post-recommendation intent handling (cheaper/premium/clarify/switch scenario-size-budget), Russian scenario labels in user-facing texts, refreshed quick replies/copy, and expanded regression coverage including dedicated parser tests.
+
 ## [0.4.6] - 2026-04-26
 
 - Restored compatibility fields in OpenAI technical logs by writing `question` and `answer` for `openai_request`/`openai_response` events while keeping structured internals in `extra`.

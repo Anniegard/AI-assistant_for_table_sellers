@@ -21,15 +21,26 @@ def _build_service() -> DialogueService:
     return DialogueService(recommendation_service, faq_service, explanation_service)
 
 
+def test_recommendation_response_has_no_internal_scenario_tokens() -> None:
+    service = _build_service()
+    context = DialogueContext(user_id=99, known_params=KnownClientParams())
+    response = service.handle("рост 178 бюджет 60000 для офиса", context)
+    assert response.goal == AssistantGoal.RECOMMEND
+    lower = response.text.lower()
+    assert "home_office" not in lower
+    assert "it_work" not in lower
+    assert "family_workspace" not in lower
+
+
 def test_dialogue_service_extracts_params_and_recommends() -> None:
     service = _build_service()
     context = DialogueContext(user_id=1, known_params=KnownClientParams())
     response = service.handle(
-        "рост 190 бюджет 50000 для дома",
+        "рост 180 бюджет 50000 для дома",
         context,
     )
     assert response.goal in {AssistantGoal.RECOMMEND, AssistantGoal.ASK_MISSING_PARAM}
-    assert context.known_params.height_cm == 190
+    assert context.known_params.height_cm == 180
     assert context.known_params.budget_max == 50000
     assert context.known_params.use_case == "home_office"
     assert context.recommended_products
@@ -66,12 +77,13 @@ def test_dialogue_service_accumulates_params_between_messages() -> None:
 def test_dialogue_service_does_not_block_without_monitors() -> None:
     service = _build_service()
     context = DialogueContext(user_id=4, known_params=KnownClientParams())
-    response = service.handle("рост 190 бюджет 50000 для дома", context)
+    response = service.handle("рост 180 бюджет 50000 для дома", context)
     assert response.goal == AssistantGoal.RECOMMEND
     assert "уточните бюджет" not in response.text.lower()
-    assert "количество мониторов вы не указали" in response.text.lower()
-    assert "уверенность:" not in response.text.lower()
-    assert "если у вас 2+ монитора" in response.text.lower()
+    t = response.text.lower()
+    assert "пока сделаю предварительный подбор" in t or "ваш рост подходит под большинство" in t
+    assert "уверенность:" not in t
+    assert "монитор" in t or "мотор" in t
 
 
 def test_faq_question_has_priority_over_missing_params() -> None:

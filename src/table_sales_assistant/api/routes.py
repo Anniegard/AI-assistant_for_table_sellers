@@ -25,9 +25,13 @@ logger = logging.getLogger(__name__)
 
 def _quick_replies(cta: str | None, *, has_recommendations: bool) -> list[str]:
     replies: list[str] = []
+    if not has_recommendations:
+        replies.extend(["Для работы дома", "Для офиса", "Для игр", "Для учёбы"])
     if cta:
         replies.append(cta)
     if has_recommendations:
+        if cta != "Сравнить варианты":
+            replies.append("Сравнить варианты")
         replies.append("Оставить заявку")
     if "Позвать менеджера" not in replies:
         replies.append("Позвать менеджера")

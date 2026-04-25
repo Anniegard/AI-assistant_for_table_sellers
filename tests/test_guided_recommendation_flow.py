@@ -5,16 +5,17 @@ import pytest
 from table_sales_assistant.bot import handlers
 from table_sales_assistant.bot.handlers import (
     faq_answer,
+    recommendation_budget,
+    recommendation_desk_size,
+    recommendation_height,
     recommendation_monitors,
-    recommendation_use_case,
+    recommendation_pc_on_desk,
+    recommendation_scenario,
 )
 from table_sales_assistant.bot.messages import (
     ASK_MONITORS_TEXT,
-    ASK_USE_CASE_TEXT,
-    FAQ_NO_HITS_TEXT,
     NO_PRODUCTS_TEXT,
 )
-from table_sales_assistant.bot.states import RecommendationStates
 from table_sales_assistant.catalog.models import Product
 
 
@@ -98,41 +99,50 @@ def _demo_product(product_id: str = "demo-desk-1") -> Product:
     )
 
 
-@pytest.mark.anyio
-async def test_guided_recommendation_without_use_case(monkeypatch: pytest.MonkeyPatch) -> None:
-    handlers.last_recommendation_context.clear()
-    service = StubRecommendationService(products=[_demo_product()])
-    monkeypatch.setattr(handlers, "recommendation_service", service)
-    monkeypatch.setattr(handlers, "explanation_service", StubExplanationService())
-
-    state = DummyState(data={"budget": 70000, "user_height": 180})
-    monitors_message = DummyMessage("2")
-    await recommendation_monitors(monitors_message, state)
-
-    assert state.state == RecommendationStates.use_case
-    assert monitors_message.answers[-1]["text"] == ASK_USE_CASE_TEXT
-
-    use_case_message = DummyMessage("Пропустить")
-    await recommendation_use_case(use_case_message, state)
-
-    assert service.last_query is not None
-    assert service.last_query.use_case is None
-    assert any("Рекомендации готовы" in item["text"] for item in use_case_message.answers)
-
-
-@pytest.mark.anyio
-async def test_guided_recommendation_with_use_case(monkeypatch: pytest.MonkeyPatch) -> None:
-    handlers.last_recommendation_context.clear()
-    service = StubRecommendationService(products=[_demo_product()])
-    monkeypatch.setattr(handlers, "recommendation_service", service)
-    monkeypatch.setattr(handlers, "explanation_service", StubExplanationService())
-
-    state = DummyState(data={"budget": 70000, "user_height": 180})
+async def _state_through_pc() -> DummyState:
+    state = DummyState()
+    await recommendation_scenario(DummyMessage("Для работы дома"), state)
+    await recommendation_height(DummyMessage("180"), state)
+    await recommendation_budget(DummyMessage("70000"), state)
     await recommendation_monitors(DummyMessage("2"), state)
-    await recommendation_use_case(DummyMessage("Для дома"), state)
+    await recommendation_pc_on_desk(DummyMessage("нет"), state)
+    return state
+
+
+@pytest.mark.anyio
+async def test_guided_recommendation_full_flow(monkeypatch: pytest.MonkeyPatch) -> None:
+    handlers.last_recommendation_context.clear()
+    service = StubRecommendationService(products=[_demo_product()])
+    monkeypatch.setattr(handlers, "recommendation_service", service)
+    monkeypatch.setattr(handlers, "explanation_service", StubExplanationService())
+
+    state = await _state_through_pc()
+    final = DummyMessage("без ограничений")
+    await recommendation_desk_size(final, state)
 
     assert service.last_query is not None
     assert service.last_query.use_case == "home_office"
+    assert any("Рекомендации готовы" in item["text"] for item in final.answers)
+
+
+@pytest.mark.anyio
+async def test_guided_recommendation_unknown_scenario(monkeypatch: pytest.MonkeyPatch) -> None:
+    handlers.last_recommendation_context.clear()
+    service = StubRecommendationService(products=[_demo_product()])
+    monkeypatch.setattr(handlers, "recommendation_service", service)
+    monkeypatch.setattr(handlers, "explanation_service", StubExplanationService())
+
+    state = DummyState()
+    await recommendation_scenario(DummyMessage("Пока не знаю"), state)
+    await recommendation_height(DummyMessage("180"), state)
+    await recommendation_budget(DummyMessage("70000"), state)
+    await recommendation_monitors(DummyMessage("2"), state)
+    await recommendation_pc_on_desk(DummyMessage("не знаю"), state)
+    final = DummyMessage("пропустить")
+    await recommendation_desk_size(final, state)
+
+    assert service.last_query is not None
+    assert service.last_query.use_case == "unknown"
 
 
 @pytest.mark.anyio
@@ -141,12 +151,13 @@ async def test_guided_recommendation_invalid_monitors(monkeypatch: pytest.Monkey
     monkeypatch.setattr(handlers, "recommendation_service", service)
     monkeypatch.setattr(handlers, "explanation_service", StubExplanationService())
 
-    state = DummyState(data={"budget": 70000, "user_height": 180})
-    message = DummyMessage("два")
+    state = await _state_through_pc()
+    state.data["monitors_count"] = None
+    state.data.pop("monitors_unspecified", None)
+    message = DummyMessage("много")
     await recommendation_monitors(message, state)
 
     assert message.answers[-1]["text"] == ASK_MONITORS_TEXT
-    assert state.state is None
 
 
 @pytest.mark.anyio
@@ -156,16 +167,22 @@ async def test_guided_recommendation_no_products_fallback(monkeypatch: pytest.Mo
     monkeypatch.setattr(handlers, "recommendation_service", service)
     monkeypatch.setattr(handlers, "explanation_service", StubExplanationService())
 
-    state = DummyState(data={"budget": 35000, "user_height": 180})
+    state = DummyState()
+    await recommendation_scenario(DummyMessage("Для работы дома"), state)
+    await recommendation_height(DummyMessage("180"), state)
+    await recommendation_budget(DummyMessage("1000"), state)
     await recommendation_monitors(DummyMessage("2"), state)
-    use_case_message = DummyMessage("Пропустить")
-    await recommendation_use_case(use_case_message, state)
+    await recommendation_pc_on_desk(DummyMessage("нет"), state)
+    use_case_message = DummyMessage("140x70")
+    await recommendation_desk_size(use_case_message, state)
 
     assert use_case_message.answers[-1]["text"] == NO_PRODUCTS_TEXT
 
 
 @pytest.mark.anyio
 async def test_faq_no_hit_fallback_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    from table_sales_assistant.bot.messages import FAQ_NO_HITS_TEXT
+
     monkeypatch.setattr(handlers, "faq_service", StubFAQService(response=None))
     state = DummyState()
     message = DummyMessage("Какой ресурс моторов?")

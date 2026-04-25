@@ -15,6 +15,10 @@ class DialogueIntent(StrEnum):
     SMALL_TALK = "small_talk"
     OBJECTION_PRICE = "objection_price"
     ACCESSORY_REQUEST = "accessory_request"
+    CHANGE_BUDGET = "change_budget"
+    CHANGE_SCENARIO = "change_scenario"
+    CHANGE_SIZE = "change_size"
+    MORE_PREMIUM = "more_premium"
     UNKNOWN = "unknown"
 
 
@@ -33,10 +37,22 @@ class KnownClientParams:
     height_cm: int | None = None
     budget_min: int | None = None
     budget_max: int | None = None
+    budget_exact_rub: int | None = None
     use_case: str | None = None
     monitors_count: int | None = None
     has_pc_case: bool | None = None
     preferred_size: str | None = None
+    preferred_width_cm: int | None = None
+    preferred_depth_cm: int | None = None
+    max_width_cm: int | None = None
+    max_depth_cm: int | None = None
+    no_size_limit: bool = False
+    heavy_setup: bool = False
+    height_unspecified: bool = False
+    budget_unspecified: bool = False
+    monitors_unspecified: bool = False
+    pc_unspecified: bool = False
+    size_unspecified: bool = False
     city: str | None = None
     needs_assembly: bool | None = None
 
@@ -60,6 +76,10 @@ class DialogueContext:
     recent_messages: list["DialogueMessage"] = field(default_factory=list)
     lead_readiness: int = 0
     manager_summary: str = ""
+    collection_answered: set[str] = field(default_factory=set)
+    awaiting_budget_after_cheaper: bool = False
+    guide_active: bool = True
+    low_budget_warned: bool = False
 
     def _add_message(self, role: str, text: str) -> None:
         cleaned = text.strip()

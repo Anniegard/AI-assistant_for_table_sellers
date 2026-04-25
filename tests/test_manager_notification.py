@@ -52,7 +52,7 @@ def test_manager_notification_sends_when_chat_id_set() -> None:
     assert "Город: СПб" in text
     assert "Бюджет: 70000" in text
     assert "Рост: 180" in text
-    assert "Сценарий: home_office" in text
+    assert "Сценарий: для работы дома" in text
     assert "Мониторы: 2" in text
     assert "Рекомендации: demo-desk-011" in text
     assert "Комментарий: Тест" in text

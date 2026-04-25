@@ -3,7 +3,7 @@ from table_sales_assistant.bot.handlers import _build_recommendation_context, _m
 
 def test_use_case_mapping_uses_human_labels() -> None:
     assert _map_use_case("Для дома") == "home_office"
-    assert _map_use_case("Для IT / разработки") == "it_work"
+    assert _map_use_case("Для IT / разработки") == "gaming"
     assert _map_use_case("Не знаю, помогите выбрать") is None
 
 

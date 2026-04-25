@@ -1,15 +1,13 @@
-﻿from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.state import State, StatesGroup
 
 
 class RecommendationStates(StatesGroup):
-    budget = State()
+    scenario = State()
     user_height = State()
+    budget = State()
     monitors_count = State()
-    use_case = State()
-
-
-class FAQStates(StatesGroup):
-    waiting_question = State()
+    pc_on_desk = State()
+    desk_size = State()
 
 
 class LeadCollectionStates(StatesGroup):
@@ -25,3 +23,7 @@ class LeadCollectionStates(StatesGroup):
     needs_delivery = State()
     needs_assembly = State()
     comment = State()
+
+
+class FAQStates(StatesGroup):
+    waiting_question = State()

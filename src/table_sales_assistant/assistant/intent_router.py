@@ -46,11 +46,37 @@ class IntentRouter:
                 "какой лучше",
                 "что выбрать",
                 "чем отличаются",
+                "первый или второй",
             )
         ):
             return DialogueIntent.COMPARE
-        if any(token in lowered for token in ("дорого", "дешевле", "бюджетн")):
+
+        if any(
+            token in lowered
+            for token in (
+                "подороже",
+                "можно лучше",
+                "есть лучше",
+                "покажи топ",
+                "премиум",
+                "дороже",
+            )
+        ):
+            return DialogueIntent.MORE_PREMIUM
+
+        if any(
+            token in lowered
+            for token in (
+                "дорого",
+                "дешевле",
+                "подешевле",
+                "убери дорог",
+                "можно дешевле",
+                "есть дешевле",
+            )
+        ):
             return DialogueIntent.OBJECTION_PRICE
+
         if any(
             token in lowered
             for token in (
@@ -66,6 +92,16 @@ class IntentRouter:
             return DialogueIntent.ACCESSORY_REQUEST
         if any(token in lowered for token in ("привет", "как дела", "спасибо")):
             return DialogueIntent.SMALL_TALK
+
+        if (
+            "почему" in lowered
+            and any(
+                token in lowered
+                for token in ("совету", "советуешь", "этот", "эту", "подойд", "точно")
+            )
+        ) or ("а точно" in lowered):
+            return DialogueIntent.CLARIFY_RECOMMENDATION
+
         if any(
             token in lowered
             for token in (

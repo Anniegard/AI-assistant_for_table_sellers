@@ -1,3 +1,4 @@
+from table_sales_assistant.assistant.scenario_labels import scenario_label_ru
 from table_sales_assistant.leads.models import Lead
 
 
@@ -22,7 +23,7 @@ def _build_manager_handoff_summary(lead: Lead) -> str:
     if lead.monitors_count:
         known.append(f"{lead.monitors_count} монитора(ов)")
     if lead.use_case:
-        known.append(f"сценарий: {lead.use_case}")
+        known.append(f"сценарий: {scenario_label_ru(lead.use_case)}")
     if lead.city:
         known.append(f"город: {lead.city}")
     known_text = ", ".join(known) if known else "-"
@@ -60,7 +61,7 @@ def format_lead_for_manager(lead: Lead) -> str:
         f"Город: {lead.city}\n"
         f"Бюджет: {_fmt_optional(lead.budget)}\n"
         f"Рост: {_fmt_optional(lead.height_cm)}\n"
-        f"Сценарий: {_fmt_optional(lead.use_case)}\n"
+        f"Сценарий: {scenario_label_ru(lead.use_case) if lead.use_case else '-'}\n"
         f"Мониторы: {_fmt_optional(lead.monitors_count)}\n"
         f"Системный блок: {_fmt_bool(lead.has_pc_case)}\n"
         f"Размер: {_fmt_optional(lead.preferred_size)}\n"

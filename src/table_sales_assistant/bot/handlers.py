@@ -4,17 +4,31 @@ from time import monotonic
 from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardRemove
 
 from table_sales_assistant.app_factory import build_app_services
+from table_sales_assistant.assistant.collection import ASK_SCENARIO_TEXT, LABEL_TO_SCENARIO
+from table_sales_assistant.assistant.free_text_parser import (
+    ACTIVE_STEP_BUDGET,
+    ACTIVE_STEP_HEIGHT,
+    ACTIVE_STEP_MONITORS,
+    ACTIVE_STEP_SIZE,
+    is_dismissal_reply,
+    parse_signals,
+)
 from table_sales_assistant.assistant.models import DialogueContext, KnownClientParams
 from table_sales_assistant.audit.service import detect_mode
-from table_sales_assistant.bot.keyboards import main_menu_keyboard, recommendation_ready_keyboard
+from table_sales_assistant.bot.keyboards import (
+    main_menu_keyboard,
+    recommendation_ready_keyboard,
+    scenario_pick_keyboard,
+)
 from table_sales_assistant.bot.messages import (
     ASK_BUDGET_TEXT,
+    ASK_DESK_SIZE_TEXT,
     ASK_HEIGHT_TEXT,
     ASK_MONITORS_TEXT,
-    ASK_USE_CASE_TEXT,
+    ASK_PC_ON_DESK_TEXT,
     ASSISTANT_RESET_TEXT,
     DEMO_MODE_TEXT,
     FAQ_NO_HITS_TEXT,
@@ -54,16 +68,6 @@ manager_notifier = services.manager_notifier
 audit_service = services.audit_service
 
 
-USE_CASE_MAP = {
-    "для дома": "home_office",
-    "для офиса": "family_workspace",
-    "для it / разработки": "it_work",
-    "для работы с двумя мониторами": "engineering",
-    "для руководителя": "executive_office",
-    "для учебы": "study",
-    "не знаю, помогите выбрать": None,
-}
-
 last_recommendation_context: dict[int, dict[str, object]] = {}
 dialogue_context_store: dict[int, DialogueContext] = {}
 
@@ -97,16 +101,18 @@ def _map_use_case(raw_value: str | None) -> str | None:
         return None
     if normalized == "пропустить":
         return None
-    return USE_CASE_MAP.get(normalized)
+    return LABEL_TO_SCENARIO.get(normalized)
 
 
 def _build_recommendation_context(data: Mapping[str, object]) -> dict[str, object]:
     context: dict[str, object] = {}
     for field in (
         "budget",
+        "budget_min",
         "user_height",
         "monitors_count",
         "use_case",
+        "has_pc_case",
         "recommended_products",
         "known_params",
         "recent_dialogue_summary",
@@ -154,30 +160,62 @@ async def demo_mode_info(message: Message) -> None:
 
 @router.message(F.text == "Подобрать стол")
 async def start_recommendation_flow(message: Message, state: FSMContext) -> None:
+    await state.set_state(RecommendationStates.scenario)
+    await message.answer(ASK_SCENARIO_TEXT, reply_markup=scenario_pick_keyboard())
+
+
+@router.message(RecommendationStates.scenario)
+async def recommendation_scenario(message: Message, state: FSMContext) -> None:
+    raw = (message.text or "").strip()
+    key = _normalize_text(raw)
+    use_case = LABEL_TO_SCENARIO.get(key)
+    if use_case is None and is_dismissal_reply(raw):
+        use_case = "unknown"
+    if use_case is None:
+        sig = parse_signals(raw, active_step=None)
+        if sig.internal_scenario:
+            use_case = sig.internal_scenario
+    if use_case is None:
+        await message.answer(ASK_SCENARIO_TEXT, reply_markup=scenario_pick_keyboard())
+        return
+    await state.update_data(use_case=use_case)
+    await state.set_state(RecommendationStates.user_height)
+    await message.answer(ASK_HEIGHT_TEXT, reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(RecommendationStates.user_height)
+async def recommendation_height(message: Message, state: FSMContext) -> None:
+    raw = message.text or ""
+    sig = parse_signals(raw, active_step=ACTIVE_STEP_HEIGHT)
+    if sig.height_cm is not None:
+        await state.update_data(user_height=sig.height_cm, height_unspecified=False)
+    elif is_dismissal_reply(raw):
+        await state.update_data(user_height=None, height_unspecified=True)
+    else:
+        await message.answer(ASK_HEIGHT_TEXT)
+        return
     await state.set_state(RecommendationStates.budget)
     await message.answer(ASK_BUDGET_TEXT)
 
 
 @router.message(RecommendationStates.budget)
 async def recommendation_budget(message: Message, state: FSMContext) -> None:
-    try:
-        budget = int((message.text or "").strip())
-    except ValueError:
+    raw = message.text or ""
+    sig = parse_signals(raw, active_step=ACTIVE_STEP_BUDGET)
+    if sig.budget_min is not None:
+        await state.update_data(budget_min=sig.budget_min)
+    if sig.budget_max is not None:
+        await state.update_data(budget=sig.budget_max, budget_max=sig.budget_max)
+    elif is_dismissal_reply(raw):
+        await state.update_data(
+            budget=None,
+            budget_min=None,
+            budget_max=None,
+            budget_unspecified=True,
+        )
+    else:
         await message.answer(ASK_BUDGET_TEXT)
         return
-    await state.update_data(budget=budget)
-    await state.set_state(RecommendationStates.user_height)
-    await message.answer(ASK_HEIGHT_TEXT)
-
-
-@router.message(RecommendationStates.user_height)
-async def recommendation_height(message: Message, state: FSMContext) -> None:
-    try:
-        user_height = int((message.text or "").strip())
-    except ValueError:
-        await message.answer(ASK_HEIGHT_TEXT)
-        return
-    await state.update_data(user_height=user_height)
     await state.set_state(RecommendationStates.monitors_count)
     await message.answer(ASK_MONITORS_TEXT)
 
@@ -191,32 +229,74 @@ async def recommendation_monitors(message: Message, state: FSMContext) -> None:
         question=message.text,
         bot_id=_bot_id(message),
     )
-    try:
-        monitors_count = int((message.text or "").strip())
-    except ValueError:
+    raw = message.text or ""
+    sig = parse_signals(raw, active_step=ACTIVE_STEP_MONITORS)
+    if sig.monitors_count is not None:
+        await state.update_data(monitors_count=sig.monitors_count)
+    elif is_dismissal_reply(raw):
+        await state.update_data(monitors_count=None, monitors_unspecified=True)
+    else:
         await message.answer(ASK_MONITORS_TEXT)
         return
-    await state.update_data(monitors_count=monitors_count)
-    await state.set_state(RecommendationStates.use_case)
-    await message.answer(ASK_USE_CASE_TEXT)
+    await state.set_state(RecommendationStates.pc_on_desk)
+    await message.answer(ASK_PC_ON_DESK_TEXT)
 
 
-@router.message(RecommendationStates.use_case)
-async def recommendation_use_case(message: Message, state: FSMContext) -> None:
+@router.message(RecommendationStates.pc_on_desk)
+async def recommendation_pc_on_desk(message: Message, state: FSMContext) -> None:
+    raw = (message.text or "").strip().lower()
+    if is_dismissal_reply(message.text or ""):
+        await state.update_data(has_pc_case=None, pc_unspecified=True)
+    elif raw in ("да", "yes", "ага"):
+        await state.update_data(has_pc_case=True, pc_unspecified=False)
+    elif raw in ("нет", "no", "только ноутбук", "только мониторы"):
+        await state.update_data(has_pc_case=False, pc_unspecified=False)
+    else:
+        sig = parse_signals(message.text or "", active_step=None)
+        if sig.has_pc_on_table is not None:
+            await state.update_data(has_pc_case=sig.has_pc_on_table, pc_unspecified=False)
+        else:
+            await message.answer(ASK_PC_ON_DESK_TEXT)
+            return
+    await state.set_state(RecommendationStates.desk_size)
+    await message.answer(ASK_DESK_SIZE_TEXT)
+
+
+@router.message(RecommendationStates.desk_size)
+async def recommendation_desk_size(message: Message, state: FSMContext) -> None:
     log_dialogue_event(
         phase="handler_enter",
-        function_name="recommendation_use_case",
+        function_name="recommendation_desk_size",
         user_id=_user_id(message),
         question=message.text,
         bot_id=_bot_id(message),
     )
-    await state.update_data(use_case=_map_use_case(message.text))
+    raw = message.text or ""
+    sig = parse_signals(raw, active_step=ACTIVE_STEP_SIZE)
+    if sig.no_size_limit or is_dismissal_reply(raw):
+        await state.update_data(no_size_limit=sig.no_size_limit or is_dismissal_reply(raw))
+    if sig.max_width_cm is not None:
+        await state.update_data(max_width_cm=sig.max_width_cm)
+    if sig.preferred_width_cm is not None:
+        await state.update_data(preferred_width_cm=sig.preferred_width_cm)
+    if sig.preferred_depth_cm is not None:
+        await state.update_data(preferred_depth_cm=sig.preferred_depth_cm)
+
     raw_data = await state.get_data()
+    budget_cap = raw_data.get("budget_max") or raw_data.get("budget")
     query = RecommendationQuery(
-        budget=raw_data.get("budget"),
+        budget=budget_cap,
+        budget_min_rub=raw_data.get("budget_min"),
+        budget_max_rub=budget_cap,
         user_height_cm=raw_data.get("user_height"),
-        monitors_count=raw_data.get("monitors_count"),
-        use_case=raw_data.get("use_case"),
+        ignore_user_height_hard_filter=bool(raw_data.get("height_unspecified")),
+        monitors_count=raw_data.get("monitors_count") or 2,
+        use_case=raw_data.get("use_case") or "unknown",
+        has_pc_case=raw_data.get("has_pc_case"),
+        heavy_setup=False,
+        max_width_cm=raw_data.get("max_width_cm"),
+        max_depth_cm=raw_data.get("max_depth_cm"),
+        no_size_limit=bool(raw_data.get("no_size_limit")),
         motors_preference=None,
     )
     products = recommendation_service.get_recommendations(query)
@@ -224,7 +304,7 @@ async def recommendation_use_case(message: Message, state: FSMContext) -> None:
         await message.answer(NO_PRODUCTS_TEXT, reply_markup=main_menu_keyboard())
         log_dialogue_event(
             phase="bot_answer",
-            function_name="recommendation_use_case",
+            function_name="recommendation_desk_size",
             user_id=_user_id(message),
             answer=NO_PRODUCTS_TEXT,
             bot_id=_bot_id(message),
@@ -250,7 +330,7 @@ async def recommendation_use_case(message: Message, state: FSMContext) -> None:
         )
         log_dialogue_event(
             phase="bot_answer",
-            function_name="recommendation_use_case",
+            function_name="recommendation_desk_size",
             user_id=_user_id(message),
             answer=f"recommendation_item:{product.id}",
             bot_id=_bot_id(message),
@@ -267,7 +347,7 @@ async def recommendation_use_case(message: Message, state: FSMContext) -> None:
     )
     log_dialogue_event(
         phase="bot_answer",
-        function_name="recommendation_use_case",
+        function_name="recommendation_desk_size",
         user_id=_user_id(message),
         answer="Рекомендации готовы. Можно оставить заявку по этим вариантам.",
         bot_id=_bot_id(message),
