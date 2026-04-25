@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.7] - 2026-04-25
+
+- Improved sales tone in no-result/FAQ fallbacks: responses now stay consultative, suggest nearby options, and gently guide users to manager handoff when needed.
+- Simplified guided recommendation flow by removing mandatory `use_case` input from the FSM path: if scenario is unknown, selection continues without this filter.
+- Updated demo docs formatting and checklist wording to match the refreshed conversation flow and presentation narrative.
+
 ## [0.3.6] - 2026-04-24
 
 - Stabilized demo-MVP recommendation flow: fixed SQLite user-height mapping (technical range is no longer treated as user height), enforced desk-only selection boundaries, improved strict-budget/cheaper handling, and added context-based compare responses.

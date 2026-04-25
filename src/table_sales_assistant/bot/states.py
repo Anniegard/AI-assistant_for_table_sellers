@@ -5,7 +5,6 @@ class RecommendationStates(StatesGroup):
     budget = State()
     user_height = State()
     monitors_count = State()
-    use_case = State()
 
 
 class FAQStates(StatesGroup):

@@ -544,12 +544,13 @@ class DialogueService:
                     context,
                     ResponseBuilder.with_cta(
                         (
-                            "По этим данным вариантов нет в наличии. "
-                            "Могу предложить похожие модели с чуть большим бюджетом."
+                            "По вашим параметрам точного совпадения в каталоге сейчас нет. "
+                            "Могу показать ближайший вариант с небольшим расширением бюджета "
+                            "или помочь оформить заявку менеджеру для точного подбора."
                         ),
                         goal=AssistantGoal.ASK_MISSING_PARAM,
                         intent=intent,
-                        cta="Есть дешевле?",
+                        cta="Позвать менеджера",
                     ),
                 )
             context.recommended_products = [item.product.id for item in ranked]
