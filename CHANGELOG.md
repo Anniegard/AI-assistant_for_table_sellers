@@ -5,6 +5,7 @@
 - Improved consultative dialogue quality with reusable response templates for recommendations, contextual FAQ answers, comparison replies, and no-exact-match fallback scenarios with clear CTAs.
 - Added richer manager handoff summary content in notifications (known client parameters, recommended option, unresolved question/objection, and suggested manager next step) and expanded regression tests for these flows.
 - Updated demo script/checklist examples to reflect the new response format and refreshed sample catalog/test coverage for the current demo scenarios.
+- Fixed Ruff/CI formatting issue in comparison response text assembly in `dialogue_service` without changing recommendation behavior.
 
 ## [0.3.8] - 2026-04-25
 

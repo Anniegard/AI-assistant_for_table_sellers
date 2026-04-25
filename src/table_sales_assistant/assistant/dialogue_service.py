@@ -325,7 +325,9 @@ class DialogueService:
                     "Лучший баланс: "
                     f"{best_balance.name} ({self._format_price(best_balance.price)}, "
                     f"диапазон {best_balance.min_height_cm}-{best_balance.max_height_cm} см, "
-                    f"столешница {best_balance.tabletop_width_cm}x{best_balance.tabletop_depth_cm} см)"
+                    "столешница "
+                    f"{best_balance.tabletop_width_cm}x"
+                    f"{best_balance.tabletop_depth_cm} см)"
                 ),
             ],
             conclusion=f"{height_hint} я бы начал с {best_balance.name}.",
