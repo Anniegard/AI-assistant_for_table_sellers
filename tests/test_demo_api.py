@@ -191,6 +191,101 @@ def test_demo_leads_invalid_session_returns_404(tmp_path: Path) -> None:
     assert response.json()["detail"] == "Session not found"
 
 
+def _post_message(client: TestClient, session_id: str, text: str) -> dict:
+    response = client.post(
+        "/api/demo/messages",
+        json={"session_id": session_id, "text": text},
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_demo_guided_happy_path_buttons_no_loop(tmp_path: Path) -> None:
+    client, _ = _build_client(tmp_path, openai_enabled=False)
+    with client:
+        session_id = client.post("/api/demo/sessions").json()["session_id"]
+        r1 = _post_message(client, session_id, "Для работы дома")
+        assert r1["lead_state"]["current_step"] == "height"
+        r2 = _post_message(client, session_id, "176-185 см")
+        assert r2["lead_state"]["current_step"] == "budget"
+        r3 = _post_message(client, session_id, "50 000-80 000 ₽")
+        assert r3["lead_state"]["current_step"] == "monitors"
+        r4 = _post_message(client, session_id, "2 монитора")
+        assert r4["lead_state"]["current_step"] == "pc_desk"
+        r5 = _post_message(client, session_id, "Нет")
+        assert r5["lead_state"]["current_step"] == "size"
+        r6 = _post_message(client, session_id, "120x60")
+        assert r6["lead_state"]["current_step"] in {"city", "assembly", None}
+        known = r6["lead_state"]["known_params"]
+        assert known["use_case"] == "home_office"
+        assert known["height_cm"] is not None
+        assert known["budget_max"] is not None
+        assert known["monitors_count"] == 2
+        assert known["has_pc_case"] is False
+        assert known["preferred_width_cm"] == 120
+
+
+def test_demo_guided_happy_path_free_text_no_loop(tmp_path: Path) -> None:
+    client, _ = _build_client(tmp_path, openai_enabled=False)
+    with client:
+        session_id = client.post("/api/demo/sessions").json()["session_id"]
+        _post_message(client, session_id, "Для работы дома")
+        _post_message(client, session_id, "178")
+        _post_message(client, session_id, "50000")
+        _post_message(client, session_id, "2")
+        _post_message(client, session_id, "нет")
+        r = _post_message(client, session_id, "120 см")
+        assert r["lead_state"]["current_step"] in {"city", "assembly", None}
+        known = r["lead_state"]["known_params"]
+        assert known["height_cm"] == 178
+        assert known["budget_max"] == 50000
+        assert known["monitors_count"] == 2
+        assert known["has_pc_case"] is False
+        assert known["preferred_width_cm"] == 120
+
+
+def test_demo_lead_flow_requires_required_fields(tmp_path: Path) -> None:
+    client, _ = _build_client(tmp_path, openai_enabled=False)
+    with client:
+        session_id = client.post("/api/demo/sessions").json()["session_id"]
+        r1 = _post_message(client, session_id, "Позвать менеджера")
+        assert r1["lead_state"]["lead_step"] == "name"
+        assert r1["manager_summary"] is None
+        r2 = _post_message(client, session_id, "Иван")
+        assert r2["lead_state"]["lead_step"] == "phone"
+        assert r2["manager_summary"] is None
+        r3 = _post_message(client, session_id, "+7 999 123 45")
+        assert r3["lead_state"]["lead_step"] == "phone"
+        assert r3["manager_summary"] is None
+        r4 = _post_message(client, session_id, "+7 999 123 45 67")
+        assert r4["lead_state"]["lead_step"] == "city"
+        r5 = _post_message(client, session_id, "Москва")
+        assert r5["lead_state"]["lead_step"] == "comment"
+        r6 = _post_message(client, session_id, "нет")
+        assert r6["lead_state"]["lead_ready"] is True
+        assert r6["manager_summary"]
+        assert "Заявка принята" in r6["assistant_text"]
+
+
+def test_demo_restart_resets_full_context(tmp_path: Path) -> None:
+    client, _ = _build_client(tmp_path, openai_enabled=False)
+    with client:
+        session_id = client.post("/api/demo/sessions").json()["session_id"]
+        _post_message(client, session_id, "Для работы дома")
+        _post_message(client, session_id, "178")
+        _post_message(client, session_id, "50000")
+        _post_message(client, session_id, "Позвать менеджера")
+        _post_message(client, session_id, "Иван")
+        restart = _post_message(client, session_id, "заново")
+        known = restart["lead_state"]["known_params"]
+        assert known["height_cm"] is None
+        assert known["budget_max"] is None
+        assert known["use_case"] is None
+        assert restart["lead_state"]["current_step"] == "scenario"
+        assert restart["lead_state"]["lead_step"] is None
+        assert restart["manager_summary"] is None
+
+
 def test_web_session_store_cleanup_keeps_active_sessions() -> None:
     now = [100.0]
 

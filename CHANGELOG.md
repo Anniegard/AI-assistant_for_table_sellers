@@ -2,6 +2,11 @@
 
 ## [0.4.8] - 2026-04-26
 
+- Fixed Web demo FSM robustness for `/api/demo/messages`: quick replies are now step-aware for each guided question, unknown input returns step-specific clarification hints with examples, and parser support was expanded for button labels + free-text variants (height/budget/monitors/PC/size/city).
+- Fixed lead handoff flow for manager escalation: `Позвать менеджера` now starts a strict chat lead FSM (`name -> phone -> city -> optional comment`) and no longer marks the request as accepted before required fields are collected.
+- Fixed context reset and manager summary consistency: `заново` now clears recommendation/lead/summary temporary state fully, and manager summary is built only from current session state with explicit `Рекомендация не сформирована...` when selection data is incomplete.
+- Added regression tests for button happy path, free-text happy path, lead-flow required fields, reset cleanup, and guided parser transitions to prevent FSM loops in Web demo.
+
 - Fixed guided flow predictability: free-text parsing no longer auto-skips monitors/PC/size, so recommendation starts only after explicit answers or explicit skip phrases on those steps.
 - Updated cheaper intent UX: "дешевле" without a budget now asks for a new budget and sets waiting state, while inline/follow-up budget replies recalculate recommendations without restarting the scenario.
 - Expanded regression coverage for guided step order, cheaper follow-up budget flow, parser edge phrases (size/PC/scenario/budget), synced `docs/data_model.md` with actual context model fields, and added manual UX checklist scenarios.

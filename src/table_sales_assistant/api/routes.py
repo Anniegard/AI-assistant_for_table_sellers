@@ -14,6 +14,24 @@ from table_sales_assistant.api.schemas import (
     MessageResponse,
     ProductCard,
 )
+from table_sales_assistant.assistant.collection import (
+    ASSEMBLY_BUTTON_LABELS,
+    BUDGET_BUTTON_LABELS,
+    CITY_BUTTON_LABELS,
+    HEIGHT_BUTTON_LABELS,
+    MONITORS_BUTTON_LABELS,
+    PC_BUTTON_LABELS,
+    SCENARIO_BUTTON_LABELS,
+    SIZE_BUTTON_LABELS,
+    STEP_ASSEMBLY,
+    STEP_BUDGET,
+    STEP_CITY,
+    STEP_HEIGHT,
+    STEP_MONITORS,
+    STEP_PC,
+    STEP_SCENARIO,
+    STEP_SIZE,
+)
 from table_sales_assistant.api.session_store import InMemoryWebSessionStore
 from table_sales_assistant.app_factory import AppServices
 from table_sales_assistant.audit.service import detect_mode
@@ -23,19 +41,92 @@ from table_sales_assistant.notifications.formatters import build_manager_handoff
 logger = logging.getLogger(__name__)
 
 
-def _quick_replies(cta: str | None, *, has_recommendations: bool) -> list[str]:
-    replies: list[str] = []
-    if not has_recommendations:
-        replies.extend(["Для работы дома", "Для офиса", "Для игр", "Для учёбы"])
-    if cta:
+def _current_collection_step(context) -> str | None:
+    kp = context.known_params
+    if kp.use_case is None:
+        return STEP_SCENARIO
+    if kp.height_cm is None and not kp.height_unspecified:
+        return STEP_HEIGHT
+    if kp.budget_max is None and kp.budget_min is None and not kp.budget_unspecified:
+        return STEP_BUDGET
+    if kp.monitors_count is None and not kp.monitors_unspecified:
+        return STEP_MONITORS
+    if kp.has_pc_case is None and not kp.pc_unspecified:
+        return STEP_PC
+    if not kp.no_size_limit and kp.max_width_cm is None and kp.preferred_width_cm is None and not kp.size_unspecified:
+        return STEP_SIZE
+    return None
+
+
+def _quick_replies(
+    context,
+    cta: str | None,
+    *,
+    has_recommendations: bool,
+    current_step: str | None,
+) -> list[str]:
+    if context.lead_flow_active:
+        if context.lead_step in ("name", "phone"):
+            return []
+        if context.lead_step == "city":
+            return list(CITY_BUTTON_LABELS[:3])
+        if context.lead_step == "comment":
+            return ["Нет"]
+        return []
+    by_step = {
+        STEP_SCENARIO: list(SCENARIO_BUTTON_LABELS),
+        STEP_HEIGHT: list(HEIGHT_BUTTON_LABELS),
+        STEP_BUDGET: list(BUDGET_BUTTON_LABELS),
+        STEP_MONITORS: list(MONITORS_BUTTON_LABELS),
+        STEP_PC: list(PC_BUTTON_LABELS),
+        STEP_SIZE: list(SIZE_BUTTON_LABELS),
+        STEP_CITY: list(CITY_BUTTON_LABELS),
+        STEP_ASSEMBLY: list(ASSEMBLY_BUTTON_LABELS),
+    }
+    replies: list[str] = list(by_step.get(current_step or "", []))
+    if cta and cta not in replies:
         replies.append(cta)
     if has_recommendations:
-        if cta != "Сравнить варианты":
+        if "Сравнить варианты" not in replies:
             replies.append("Сравнить варианты")
-        replies.append("Оставить заявку")
-    if "Позвать менеджера" not in replies:
+        if "Оставить заявку" not in replies:
+            replies.append("Оставить заявку")
+    if "Позвать менеджера" not in replies and not context.lead_flow_active:
         replies.append("Позвать менеджера")
     return replies
+
+
+def _build_manager_summary(context, summary: dict[str, object]) -> str:
+    known = summary.get("known_params", {}) if isinstance(summary, dict) else {}
+    missing = []
+    if not known.get("use_case"):
+        missing.append("сценарий использования")
+    if not known.get("height_cm"):
+        missing.append("рост")
+    if not (known.get("budget_min") or known.get("budget_max")):
+        missing.append("бюджет")
+    if not known.get("monitors_count"):
+        missing.append("количество мониторов")
+    if not known.get("city"):
+        missing.append("город")
+    if context.recommended_products:
+        recommendation_line = f"Рекомендованный вариант: {context.recommended_products[0]}"
+    else:
+        recommendation_line = (
+            "Рекомендация не сформирована: не хватает параметров "
+            + (", ".join(missing) if missing else "для подбора")
+            + "."
+        )
+    lines = [
+        "Сводка для менеджера:",
+        f"- Имя: {context.lead_name or '-'}",
+        f"- Телефон: {context.lead_phone or '-'}",
+        f"- Город: {context.lead_city or known.get('city') or '-'}",
+        recommendation_line,
+    ]
+    if context.lead_comment:
+        lines.append(f"- Комментарий клиента: {context.lead_comment}")
+    return "\n".join(lines)
 
 
 def create_demo_router(
@@ -80,6 +171,7 @@ def create_demo_router(
             response = services.dialogue_service.handle(payload.text, session.context)
             summary = session.context.get_context_summary()
             session.last_recommendation_context = summary
+            current_step = _current_collection_step(session.context)
             products = services.recommendation_service.get_products_by_ids(
                 session.context.recommended_products
             )
@@ -92,9 +184,10 @@ def create_demo_router(
                 )
                 for item in products
             ]
-            manager_summary = (
-                summary["recent_dialogue_summary"] if response.start_lead_flow else None
-            )
+            manager_summary = None
+            if session.context.lead_step == "done":
+                manager_summary = _build_manager_summary(session.context, summary)
+                session.context.manager_summary = manager_summary
             mode = detect_mode(
                 provider="openai",
                 used_llm=services.explanation_service.last_response_used_llm,
@@ -126,13 +219,19 @@ def create_demo_router(
                 assistant_text=response.text,
                 intent=response.intent.value,
                 quick_replies=_quick_replies(
-                    response.cta, has_recommendations=bool(session.context.recommended_products)
+                    session.context,
+                    response.cta,
+                    has_recommendations=bool(session.context.recommended_products),
+                    current_step=current_step,
                 ),
                 recommended_products=product_cards,
                 lead_state=LeadState(
                     start_lead_flow=response.start_lead_flow,
                     has_recommendations=bool(session.context.recommended_products),
                     known_params=summary["known_params"],
+                    current_step=current_step,
+                    lead_step=session.context.lead_step,
+                    lead_ready=session.context.lead_step == "done",
                 ),
                 manager_summary=manager_summary,
             )
@@ -175,6 +274,9 @@ def create_demo_router(
                     start_lead_flow=False,
                     has_recommendations=bool(session.context.recommended_products),
                     known_params=summary["known_params"],
+                    current_step=_current_collection_step(session.context),
+                    lead_step=session.context.lead_step,
+                    lead_ready=session.context.lead_step == "done",
                 ),
                 manager_summary=None,
             )
@@ -187,6 +289,14 @@ def create_demo_router(
 
         context_summary = session.context.get_context_summary()
         lead_data = payload.model_dump()
+        if session.context.lead_name:
+            lead_data["name"] = session.context.lead_name
+        if session.context.lead_phone:
+            lead_data["phone"] = session.context.lead_phone
+        if session.context.lead_city:
+            lead_data["city"] = session.context.lead_city
+        if session.context.lead_comment and not lead_data.get("comment"):
+            lead_data["comment"] = session.context.lead_comment
         lead_data.update(
             known_params=context_summary["known_params"],
             recommended_products=list(session.context.recommended_products),
@@ -213,7 +323,7 @@ def create_demo_router(
         return LeadResponse(
             lead_id=lead.id,
             source=lead.source,
-            manager_summary=build_manager_handoff_summary(lead),
+            manager_summary=session.context.manager_summary or build_manager_handoff_summary(lead),
         )
 
     return router

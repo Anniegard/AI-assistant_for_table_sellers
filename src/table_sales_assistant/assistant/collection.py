@@ -8,6 +8,8 @@ STEP_BUDGET = "budget"
 STEP_MONITORS = "monitors"
 STEP_PC = "pc_desk"
 STEP_SIZE = "size"
+STEP_CITY = "city"
+STEP_ASSEMBLY = "assembly"
 
 COLLECTION_ORDER: tuple[str, ...] = (
     STEP_SCENARIO,
@@ -16,6 +18,8 @@ COLLECTION_ORDER: tuple[str, ...] = (
     STEP_MONITORS,
     STEP_PC,
     STEP_SIZE,
+    STEP_CITY,
+    STEP_ASSEMBLY,
 )
 
 ASK_SCENARIO_TEXT = (
@@ -47,11 +51,70 @@ ASK_SIZE_STEP_TEXT = (
     "Например: 120 см, 140x70 или можно без ограничений."
 )
 
+ASK_CITY_STEP_TEXT = "В каком городе нужна доставка?"
+
+ASK_ASSEMBLY_STEP_TEXT = "Нужна ли сборка?"
+
 SCENARIO_BUTTON_LABELS: tuple[str, ...] = (
     "Для работы дома",
     "Для офиса",
     "Для игр",
     "Для учёбы",
+    "Пока не знаю",
+)
+
+HEIGHT_BUTTON_LABELS: tuple[str, ...] = (
+    "До 165 см",
+    "165-175 см",
+    "176-185 см",
+    "186-195 см",
+    "Выше 195 см",
+    "Ввести вручную",
+)
+
+BUDGET_BUTTON_LABELS: tuple[str, ...] = (
+    "До 30 000 ₽",
+    "30 000-50 000 ₽",
+    "50 000-80 000 ₽",
+    "80 000+ ₽",
+    "Пока не знаю",
+)
+
+MONITORS_BUTTON_LABELS: tuple[str, ...] = (
+    "1 монитор",
+    "2 монитора",
+    "3+ монитора",
+    "Ноутбук",
+    "Ноутбук + монитор",
+)
+
+PC_BUTTON_LABELS: tuple[str, ...] = (
+    "Да",
+    "Нет",
+    "Только ноутбук",
+    "Системник на полу",
+    "Не знаю",
+)
+
+SIZE_BUTTON_LABELS: tuple[str, ...] = (
+    "Без ограничений",
+    "120x60",
+    "140x70",
+    "160x80",
+    "Не знаю",
+    "Ввести вручную",
+)
+
+CITY_BUTTON_LABELS: tuple[str, ...] = (
+    "Москва",
+    "Санкт-Петербург",
+    "Другой город",
+    "Пока не знаю",
+)
+
+ASSEMBLY_BUTTON_LABELS: tuple[str, ...] = (
+    "Да",
+    "Нет",
     "Пока не знаю",
 )
 

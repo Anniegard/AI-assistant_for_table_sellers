@@ -26,6 +26,9 @@ class LeadState(BaseModel):
     start_lead_flow: bool = False
     has_recommendations: bool = False
     known_params: dict[str, object] = Field(default_factory=dict)
+    current_step: str | None = None
+    lead_step: str | None = None
+    lead_ready: bool = False
 
 
 class MessageResponse(BaseModel):

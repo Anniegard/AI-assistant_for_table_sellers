@@ -165,6 +165,17 @@ def parse_budget_from_text(text: str) -> tuple[int | None, int | None, int | Non
 
 def parse_height_cm(text: str, *, active_step: str | None) -> int | None:
     lowered = text.lower()
+    if active_step == ACTIVE_STEP_HEIGHT:
+        if "до 165" in lowered:
+            return 165
+        if "165-175" in lowered:
+            return 170
+        if "176-185" in lowered:
+            return 180
+        if "186-195" in lowered:
+            return 190
+        if "выше 195" in lowered:
+            return 196
     m = re.search(r"(?:рост|height)\D{0,12}(\d{2,3})\s*(?:см|cm)?", lowered)
     if m:
         h = int(m.group(1))
@@ -197,6 +208,13 @@ def parse_height_cm(text: str, *, active_step: str | None) -> int | None:
 
 
 def parse_monitors_with_step(text: str, *, active_step: str | None) -> int | None:
+    lowered = text.lower()
+    if "ноутбук + монитор" in lowered:
+        return 2
+    if "ноутбук" in lowered:
+        return 1
+    if "3+" in lowered or "несколь" in lowered:
+        return 3
     if active_step == ACTIVE_STEP_MONITORS:
         solo = re.match(r"^\s*(\d)\s*$", text.strip())
         if solo:
@@ -205,7 +223,6 @@ def parse_monitors_with_step(text: str, *, active_step: str | None) -> int | Non
         for word, n in _NUM_WORD_MONITORS.items():
             if low == word or low == f"{word}.":
                 return n
-    lowered = text.lower()
     for word, n in _NUM_WORD_MONITORS.items():
         if f"{word} монит" in lowered:
             return n
@@ -217,6 +234,10 @@ def parse_monitors_with_step(text: str, *, active_step: str | None) -> int | Non
 
 def parse_has_pc_on_table(text: str) -> bool | None:
     lowered = text.lower()
+    if "системник на полу" in lowered:
+        return False
+    if lowered.strip() in {"да", "нет", "не знаю"}:
+        return True if lowered.strip() == "да" else False if lowered.strip() == "нет" else None
     if any(
         t in lowered
         for t in (
@@ -260,6 +281,11 @@ def parse_desktop_size_cm(text: str) -> tuple[int | None, int | None]:
         w = int(m.group(1))
         if 60 <= w <= 300:
             return w, None
+    m2 = re.match(r"^\s*(\d{3})\s*(?:см)?\s*$", lowered)
+    if m2:
+        w = int(m2.group(1))
+        if w in {120, 140, 160}:
+            return w, 60 if w == 120 else 70 if w == 140 else 80
     return None, None
 
 
@@ -325,7 +351,11 @@ def parse_signals(text: str, *, active_step: str | None = None) -> ParsedSignals
 
     lowered = raw.lower()
 
-    if "без огранич" in lowered or "ограничений нет" in lowered:
+    if (
+        "без огранич" in lowered
+        or "ограничений нет" in lowered
+        or (active_step == ACTIVE_STEP_SIZE and lowered.strip() in {"нет", "без ограничений"})
+    ):
         signals.no_size_limit = True
 
     signals.heavy_setup = has_stability_priority(raw)

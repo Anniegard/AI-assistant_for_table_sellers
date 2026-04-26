@@ -126,6 +126,29 @@ async def test_guided_recommendation_full_flow(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.anyio
+async def test_guided_recommendation_accepts_short_pc_and_size_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handlers.last_recommendation_context.clear()
+    service = StubRecommendationService(products=[_demo_product("demo-desk-2")])
+    monkeypatch.setattr(handlers, "recommendation_service", service)
+    monkeypatch.setattr(handlers, "explanation_service", StubExplanationService())
+
+    state = DummyState()
+    await recommendation_scenario(DummyMessage("Для работы дома"), state)
+    await recommendation_height(DummyMessage("178"), state)
+    await recommendation_budget(DummyMessage("50000"), state)
+    await recommendation_monitors(DummyMessage("2"), state)
+    await recommendation_pc_on_desk(DummyMessage("нет"), state)
+    final = DummyMessage("120 см")
+    await recommendation_desk_size(final, state)
+
+    assert service.last_query is not None
+    assert service.last_query.has_pc_case is False
+    assert service.last_query.max_width_cm in {120, None}
+
+
+@pytest.mark.anyio
 async def test_guided_recommendation_unknown_scenario(monkeypatch: pytest.MonkeyPatch) -> None:
     handlers.last_recommendation_context.clear()
     service = StubRecommendationService(products=[_demo_product()])

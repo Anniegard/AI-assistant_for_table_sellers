@@ -80,6 +80,12 @@ class DialogueContext:
     awaiting_budget_after_cheaper: bool = False
     guide_active: bool = True
     low_budget_warned: bool = False
+    lead_flow_active: bool = False
+    lead_step: str | None = None
+    lead_name: str | None = None
+    lead_phone: str | None = None
+    lead_city: str | None = None
+    lead_comment: str | None = None
 
     def _add_message(self, role: str, text: str) -> None:
         cleaned = text.strip()
@@ -120,6 +126,14 @@ class DialogueContext:
             "recommended_products": last_products,
             "dialogue_stage": self.dialogue_goal or "active_dialogue",
             "recent_dialogue_summary": " ".join(summary_parts),
+            "lead_data": {
+                "name": self.lead_name,
+                "phone": self.lead_phone,
+                "city": self.lead_city,
+                "comment": self.lead_comment,
+                "lead_step": self.lead_step,
+                "lead_flow_active": self.lead_flow_active,
+            },
         }
 
 

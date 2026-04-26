@@ -1,7 +1,9 @@
 from dataclasses import fields
 
 from table_sales_assistant.assistant.collection import (
+    ASK_ASSEMBLY_STEP_TEXT,
     ASK_BUDGET_STEP_TEXT,
+    ASK_CITY_STEP_TEXT,
     ASK_HEIGHT_STEP_TEXT,
     ASK_MONITORS_STEP_TEXT,
     ASK_PC_STEP_TEXT,
@@ -14,6 +16,8 @@ from table_sales_assistant.assistant.collection import (
     STEP_PC,
     STEP_SCENARIO,
     STEP_SIZE,
+    STEP_CITY,
+    STEP_ASSEMBLY,
 )
 from table_sales_assistant.assistant.free_text_parser import (
     ACTIVE_STEP_BUDGET,
@@ -125,6 +129,14 @@ class DialogueService:
         context.guide_active = True
         context.low_budget_warned = False
         context.awaiting_budget_after_cheaper = False
+        context.manager_summary = ""
+        context.dialogue_goal = None
+        context.lead_flow_active = False
+        context.lead_step = None
+        context.lead_name = None
+        context.lead_phone = None
+        context.lead_city = None
+        context.lead_comment = None
 
     def _merge_signals_into_params(
         self, context: DialogueContext, signals: ParsedSignals, raw_text: str
@@ -159,6 +171,17 @@ class DialogueService:
             kp.size_unspecified = False
         if signals.heavy_setup:
             kp.heavy_setup = True
+        raw_lower = (raw_text or "").strip().lower()
+        if raw_lower in ("москва", "санкт-петербург"):
+            kp.city = raw_text.strip()
+        if "другой город" in raw_lower:
+            kp.city = None
+        if raw_lower in ("да", "нужна сборка"):
+            kp.needs_assembly = True
+        elif raw_lower in ("нет", "без сборки"):
+            kp.needs_assembly = False
+        elif raw_lower in ("пока не знаю", "не знаю"):
+            kp.needs_assembly = False
 
         mapped = LABEL_TO_SCENARIO.get((raw_text or "").strip().lower())
         if mapped is not None:
@@ -185,6 +208,10 @@ class DialogueService:
             kp.pc_unspecified = True
         elif missing == STEP_SIZE:
             kp.size_unspecified = True
+        elif missing == STEP_CITY:
+            kp.city = "Пока не знаю"
+        elif missing == STEP_ASSEMBLY:
+            kp.needs_assembly = None
 
     def _apply_combined_free_text_shortcut(self, context: DialogueContext, text: str) -> None:
         lowered = text.lower()
@@ -349,8 +376,134 @@ class DialogueService:
             STEP_MONITORS: ASK_MONITORS_STEP_TEXT,
             STEP_PC: ASK_PC_STEP_TEXT,
             STEP_SIZE: ASK_SIZE_STEP_TEXT,
+            STEP_CITY: ASK_CITY_STEP_TEXT,
+            STEP_ASSEMBLY: ASK_ASSEMBLY_STEP_TEXT,
         }
         return prompts.get(step or "")
+
+    @staticmethod
+    def _invalid_step_hint(step: str) -> str:
+        hints = {
+            STEP_HEIGHT: (
+                "Не совсем понял рост. Выберите вариант кнопкой или напишите, например: 178 или 178 см."
+            ),
+            STEP_BUDGET: (
+                "Не совсем понял бюджет. Выберите кнопкой или напишите, например: 50000, 50к, 50-80к."
+            ),
+            STEP_MONITORS: (
+                "Не совсем понял количество мониторов. Выберите кнопкой или напишите: 1, 2, несколько."
+            ),
+            STEP_PC: (
+                "Не понял, где будет системный блок. Выберите: Да, Нет, Только ноутбук, Системник на полу."
+            ),
+            STEP_SIZE: (
+                "Не совсем понял размер. Выберите вариант кнопкой или напишите, например: 120x60, 140x70, без ограничений."
+            ),
+            STEP_CITY: (
+                "Не понял город. Выберите кнопку или напишите название города."
+            ),
+            STEP_ASSEMBLY: (
+                "Не понял ответ по сборке. Выберите: Да, Нет или Пока не знаю."
+            ),
+        }
+        return hints.get(step, "Не совсем понял ответ. Выберите вариант кнопкой или напишите подробнее.")
+
+    @staticmethod
+    def _is_step_value_recognized(step: str, context: DialogueContext) -> bool:
+        kp = context.known_params
+        if step == STEP_SCENARIO:
+            return kp.use_case is not None
+        if step == STEP_HEIGHT:
+            return kp.height_cm is not None or kp.height_unspecified
+        if step == STEP_BUDGET:
+            return (kp.budget_min is not None or kp.budget_max is not None) or kp.budget_unspecified
+        if step == STEP_MONITORS:
+            return kp.monitors_count is not None or kp.monitors_unspecified
+        if step == STEP_PC:
+            return kp.has_pc_case is not None or kp.pc_unspecified
+        if step == STEP_SIZE:
+            return kp.no_size_limit or kp.preferred_width_cm is not None or kp.size_unspecified
+        return True
+
+    def _start_lead_flow(self, context: DialogueContext) -> AssistantResponse:
+        context.lead_flow_active = True
+        context.lead_step = "name"
+        return AssistantResponse(
+            text="Отлично, помогу оставить заявку менеджеру. Как вас зовут?",
+            goal=AssistantGoal.COLLECT_LEAD,
+            intent=DialogueIntent.HANDOFF_MANAGER,
+            start_lead_flow=True,
+        )
+
+    def _handle_lead_flow(self, text: str, context: DialogueContext) -> AssistantResponse:
+        value = text.strip()
+        lowered = value.lower()
+        if context.lead_step == "name":
+            if not value:
+                return ResponseBuilder.plain(
+                    "Напишите, пожалуйста, как к вам обращаться.",
+                    goal=AssistantGoal.COLLECT_LEAD,
+                    intent=DialogueIntent.LEAVE_LEAD,
+                )
+            context.lead_name = value
+            context.lead_step = "phone"
+            return ResponseBuilder.plain(
+                "Оставьте телефон для связи.",
+                goal=AssistantGoal.COLLECT_LEAD,
+                intent=DialogueIntent.LEAVE_LEAD,
+            )
+        if context.lead_step == "phone":
+            digits = "".join(ch for ch in value if ch.isdigit())
+            if len(digits) < 10:
+                return ResponseBuilder.plain(
+                    "Телефон выглядит неполным. Укажите номер в формате +7XXXXXXXXXX.",
+                    goal=AssistantGoal.COLLECT_LEAD,
+                    intent=DialogueIntent.LEAVE_LEAD,
+                )
+            context.lead_phone = value
+            context.lead_step = "city"
+            return ResponseBuilder.plain(
+                "В каком городе вы находитесь?",
+                goal=AssistantGoal.COLLECT_LEAD,
+                intent=DialogueIntent.LEAVE_LEAD,
+            )
+        if context.lead_step == "city":
+            if lowered in {"другой город", "пока не знаю"}:
+                return ResponseBuilder.plain(
+                    "Напишите, пожалуйста, город вручную.",
+                    goal=AssistantGoal.COLLECT_LEAD,
+                    intent=DialogueIntent.LEAVE_LEAD,
+                )
+            if not value:
+                return ResponseBuilder.plain(
+                    "Укажите город, чтобы передать заявку менеджеру.",
+                    goal=AssistantGoal.COLLECT_LEAD,
+                    intent=DialogueIntent.LEAVE_LEAD,
+                )
+            context.lead_city = value
+            context.known_params.city = value
+            context.lead_step = "comment"
+            return ResponseBuilder.plain(
+                "Если есть комментарий для менеджера — напишите его. Если нет, напишите «нет».",
+                goal=AssistantGoal.COLLECT_LEAD,
+                intent=DialogueIntent.LEAVE_LEAD,
+            )
+        if context.lead_step == "comment":
+            if lowered not in {"нет", "не знаю", "пропустить", "-"}:
+                context.lead_comment = value
+            context.lead_flow_active = False
+            context.lead_step = "done"
+            return AssistantResponse(
+                text="Заявка принята. Спасибо! Менеджер свяжется с вами в ближайшее время.",
+                goal=AssistantGoal.HANDOFF_READY,
+                intent=DialogueIntent.LEAVE_LEAD,
+                start_lead_flow=False,
+            )
+        return ResponseBuilder.plain(
+            "Готов продолжить подбор. Напишите, что важно в столе.",
+            goal=AssistantGoal.ASK_MISSING_PARAM,
+            intent=DialogueIntent.UNKNOWN,
+        )
 
     def _format_main_recommendation_text(
         self,
@@ -597,7 +750,7 @@ class DialogueService:
         if text.strip():
             context.recent_questions.append(text.strip())
             context.recent_questions = context.recent_questions[-10:]
-
+        missing_before = _first_missing_collection_step(context.known_params)
         self._update_context_from_text(text, context)
         intent = self.intent_router.route(text)
         intent = self._post_rec_intent_override(text, intent, context)
@@ -642,33 +795,11 @@ class DialogueService:
                 ),
             )
 
+        if context.lead_flow_active and intent != DialogueIntent.RESTART:
+            return self._with_history(context, self._handle_lead_flow(text, context))
+
         if intent in (DialogueIntent.LEAVE_LEAD, DialogueIntent.HANDOFF_MANAGER):
-            known: list[str] = []
-            kp = context.known_params
-            if kp.height_cm:
-                known.append(f"рост {kp.height_cm} см")
-            if kp.budget_max:
-                known.append(f"бюджет до {kp.budget_max:,} руб".replace(",", " "))
-            if kp.use_case:
-                known.append(f"сценарий: {scenario_label_ru(kp.use_case)}")
-            if context.recommended_products:
-                lead_text = "Отлично, помогу оставить заявку менеджеру. Как вас зовут?"
-            elif known:
-                lead_text = (
-                    "Хорошо, помогу оставить заявку менеджеру. "
-                    f"Я уже вижу параметры: {', '.join(known)}. Как вас зовут?"
-                )
-            else:
-                lead_text = "Отлично, помогу оставить заявку менеджеру. Как вас зовут?"
-            return self._with_history(
-                context,
-                AssistantResponse(
-                    text=lead_text,
-                    goal=AssistantGoal.COLLECT_LEAD,
-                    intent=intent,
-                    start_lead_flow=True,
-                ),
-            )
+            return self._with_history(context, self._start_lead_flow(context))
 
         if intent in (DialogueIntent.FAQ, DialogueIntent.DELIVERY_WARRANTY_MATERIALS):
             if self._is_motor_faq(text):
@@ -866,6 +997,19 @@ class DialogueService:
         ):
             missing_col = _first_missing_collection_step(context.known_params)
             if missing_col is not None:
+                if (
+                    missing_before == missing_col
+                    and not self._is_step_value_recognized(missing_col, context)
+                    and text.strip()
+                ):
+                    return self._with_history(
+                        context,
+                        ResponseBuilder.plain(
+                            self._invalid_step_hint(missing_col),
+                            goal=AssistantGoal.ASK_MISSING_PARAM,
+                            intent=intent,
+                        ),
+                    )
                 prompt = self._next_collection_prompt(context)
                 if prompt:
                     return self._with_history(
