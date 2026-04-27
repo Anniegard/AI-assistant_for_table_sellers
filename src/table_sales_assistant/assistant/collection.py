@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from table_sales_assistant.assistant.models import KnownClientParams
+
 STEP_SCENARIO = "scenario"
 STEP_HEIGHT = "height"
 STEP_BUDGET = "budget"
@@ -134,3 +136,28 @@ def map_scenario_label(text: str | None) -> str | None:
         return None
     key = text.strip().lower()
     return LABEL_TO_SCENARIO.get(key)
+
+
+def get_current_collection_step(kp: KnownClientParams) -> str | None:
+    if kp.use_case is None:
+        return STEP_SCENARIO
+    if kp.height_cm is None and not kp.height_unspecified:
+        return STEP_HEIGHT
+    if kp.budget_max is None and kp.budget_min is None and not kp.budget_unspecified:
+        return STEP_BUDGET
+    if kp.monitors_count is None and not kp.monitors_unspecified:
+        return STEP_MONITORS
+    if kp.has_pc_case is None and not kp.pc_unspecified:
+        return STEP_PC
+    if (
+        not kp.no_size_limit
+        and kp.max_width_cm is None
+        and kp.preferred_width_cm is None
+        and not kp.size_unspecified
+    ):
+        return STEP_SIZE
+    if not kp.city:
+        return STEP_CITY
+    if kp.needs_assembly is None:
+        return STEP_ASSEMBLY
+    return None

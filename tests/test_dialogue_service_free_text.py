@@ -1,12 +1,14 @@
 from pathlib import Path
 
 from table_sales_assistant.ai.client import OpenAIClient
+from table_sales_assistant.assistant.dialogue_service import DialogueService
 from table_sales_assistant.assistant.collection import (
+    ASK_ASSEMBLY_STEP_TEXT,
+    ASK_CITY_STEP_TEXT,
     ASK_MONITORS_STEP_TEXT,
     ASK_PC_STEP_TEXT,
     ASK_SIZE_STEP_TEXT,
 )
-from table_sales_assistant.assistant.dialogue_service import DialogueService
 from table_sales_assistant.assistant.models import AssistantGoal, DialogueContext, KnownClientParams
 from table_sales_assistant.assistant.parsing import extract_budget_range
 from table_sales_assistant.catalog.recommender import ProductRecommender
@@ -29,9 +31,11 @@ def _build_service() -> DialogueService:
 def test_recommendation_response_has_no_internal_scenario_tokens() -> None:
     service = _build_service()
     context = DialogueContext(user_id=99, known_params=KnownClientParams())
-    response = service.handle(
+    service.handle(
         "рост 178 бюджет 60000 для офиса 2 монитора только ноутбук 140x70", context
     )
+    service.handle("Москва", context)
+    response = service.handle("Да", context)
     assert response.goal == AssistantGoal.RECOMMEND
     lower = response.text.lower()
     assert "home_office" not in lower
@@ -123,10 +127,12 @@ def test_budget_parsing_variants() -> None:
 def test_lead_request_uses_existing_context() -> None:
     service = _build_service()
     context = DialogueContext(user_id=7, known_params=KnownClientParams())
-    first_response = service.handle(
+    service.handle(
         "рост 190 бюджет 50000 для дома 2 монитора только ноутбук 140x70",
         context,
     )
+    service.handle("Москва", context)
+    first_response = service.handle("Да", context)
     assert first_response.goal == AssistantGoal.RECOMMEND
     assert context.recommended_products
 
@@ -151,9 +157,11 @@ def test_dialogue_context_stores_recent_user_and_assistant_messages() -> None:
 def test_cheaper_request_does_not_repeat_same_products() -> None:
     service = _build_service()
     context = DialogueContext(user_id=11, known_params=KnownClientParams())
-    first = service.handle(
+    service.handle(
         "рост 190 бюджет 50000 для дома 2 монитора системник на столе 140x70", context
     )
+    service.handle("Москва", context)
+    first = service.handle("Да", context)
     first_ids = list(context.recommended_products)
     assert first.goal == AssistantGoal.RECOMMEND
     assert first_ids
@@ -219,10 +227,63 @@ def test_guided_flow_recommends_after_size_answer() -> None:
         ),
     )
     response = service.handle("140x70", context)
-    assert response.goal == AssistantGoal.RECOMMEND
+    assert response.goal == AssistantGoal.ASK_MISSING_PARAM
+    assert response.text == ASK_CITY_STEP_TEXT
     assert context.known_params.preferred_width_cm == 140
     assert context.known_params.preferred_depth_cm == 70
+    assert not context.recommended_products
+
+
+def test_guided_flow_goes_city_then_assembly_then_recommendation() -> None:
+    service = _build_service()
+    context = DialogueContext(
+        user_id=25,
+        known_params=KnownClientParams(
+            height_cm=180,
+            budget_max=50000,
+            use_case="home_office",
+            monitors_count=2,
+            has_pc_case=False,
+            preferred_width_cm=140,
+            preferred_depth_cm=70,
+        ),
+    )
+    city_response = service.handle("Москва", context)
+    assert city_response.goal == AssistantGoal.ASK_MISSING_PARAM
+    assert city_response.text == ASK_ASSEMBLY_STEP_TEXT
+    assert context.known_params.city == "Москва"
+    assembly_response = service.handle("Да", context)
+    assert assembly_response.goal == AssistantGoal.RECOMMEND
+    assert context.known_params.needs_assembly is True
     assert context.recommended_products
+
+
+def test_manual_input_button_returns_step_hint() -> None:
+    service = _build_service()
+    context = DialogueContext(user_id=26, known_params=KnownClientParams())
+    service.handle("Для работы дома", context)
+    height_hint = service.handle("Ввести вручную", context)
+    assert height_hint.goal == AssistantGoal.ASK_MISSING_PARAM
+    assert "Введите рост числом, например 178" in height_hint.text
+    assert context.known_params.height_cm is None
+
+
+def test_yes_no_does_not_set_assembly_on_pc_step() -> None:
+    service = _build_service()
+    context = DialogueContext(
+        user_id=27,
+        known_params=KnownClientParams(
+            height_cm=180,
+            budget_max=50000,
+            use_case="home_office",
+            monitors_count=2,
+        ),
+    )
+    response = service.handle("нет", context)
+    assert response.goal == AssistantGoal.ASK_MISSING_PARAM
+    assert response.text == ASK_SIZE_STEP_TEXT
+    assert context.known_params.has_pc_case is False
+    assert context.known_params.needs_assembly is None
 
 
 def test_cheaper_without_budget_asks_for_new_budget() -> None:
@@ -251,10 +312,12 @@ def test_cheaper_without_budget_asks_for_new_budget() -> None:
 def test_cheaper_with_budget_recalculates() -> None:
     service = _build_service()
     context = DialogueContext(user_id=23, known_params=KnownClientParams())
-    first = service.handle(
+    service.handle(
         "рост 180 бюджет 90000 для дома 2 монитора только ноутбук 140x70",
         context,
     )
+    service.handle("Москва", context)
+    first = service.handle("Да", context)
     first_ids = list(context.recommended_products)
     assert first.goal == AssistantGoal.RECOMMEND
     response = service.handle("давай до 50к", context)
@@ -269,10 +332,12 @@ def test_cheaper_with_budget_recalculates() -> None:
 def test_budget_answer_after_cheaper_prompt_recalculates() -> None:
     service = _build_service()
     context = DialogueContext(user_id=24, known_params=KnownClientParams())
-    first = service.handle(
+    service.handle(
         "рост 180 бюджет 90000 для дома 2 монитора только ноутбук 140x70",
         context,
     )
+    service.handle("Москва", context)
+    first = service.handle("Да", context)
     assert first.goal == AssistantGoal.RECOMMEND
     ask = service.handle("давай дешевле", context)
     assert ask.goal == AssistantGoal.ASK_MISSING_PARAM
@@ -287,10 +352,12 @@ def test_budget_answer_after_cheaper_prompt_recalculates() -> None:
 def test_compare_request_uses_recommended_products() -> None:
     service = _build_service()
     context = DialogueContext(user_id=14, known_params=KnownClientParams())
-    first = service.handle(
+    service.handle(
         "рост 190 бюджет 50000 для дома 2 монитора только ноутбук 140x70",
         context,
     )
+    service.handle("Москва", context)
+    first = service.handle("Да", context)
     assert first.goal == AssistantGoal.RECOMMEND
     first_ids = list(context.recommended_products)
     assert first_ids
@@ -305,9 +372,11 @@ def test_compare_request_uses_recommended_products() -> None:
 def test_recommendation_template_is_compact_without_confidence_and_cta_hint() -> None:
     service = _build_service()
     context = DialogueContext(user_id=15, known_params=KnownClientParams())
-    response = service.handle(
+    service.handle(
         "рост 182 бюджет 80000 для дома 2 монитора только ноутбук 140x70", context
     )
+    service.handle("Москва", context)
+    response = service.handle("Да", context)
     assert response.goal == AssistantGoal.RECOMMEND
     assert "уверенность:" not in response.text.lower()
     assert "следующий шаг:" not in response.text.lower()
@@ -334,10 +403,12 @@ def test_faq_uses_contextual_template() -> None:
 def test_fallback_never_returns_empty_no_match_message() -> None:
     service = _build_service()
     context = DialogueContext(user_id=17, known_params=KnownClientParams())
-    response = service.handle(
+    service.handle(
         "подбери стол: рост 230 бюджет 30000 для дома 2 монитора системник на столе 200x90",
         context,
     )
+    service.handle("Москва", context)
+    response = service.handle("Да", context)
     assert "точного совпадения сейчас нет" in response.text.lower()
     assert "что ограничивает подбор" in response.text.lower()
     assert "ближайшие альтернативы" in response.text.lower()
@@ -351,9 +422,11 @@ def test_accessory_can_be_recommended_only_for_accessory_intent() -> None:
     assert "из аксессуаров можно рассмотреть" in accessory_response.text.lower()
 
     desk_context = DialogueContext(user_id=13, known_params=KnownClientParams())
-    desk_response = service.handle(
+    service.handle(
         "подбери стол рост 190 бюджет 50000 для дома 2 монитора только ноутбук 140x70",
         desk_context,
     )
+    service.handle("Москва", desk_context)
+    desk_response = service.handle("Да", desk_context)
     assert desk_response.goal == AssistantGoal.RECOMMEND
     assert "cabletray pro" not in desk_response.text.lower()

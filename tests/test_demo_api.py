@@ -73,15 +73,9 @@ def test_demo_messages_openai_disabled_returns_recommendation(tmp_path: Path) ->
     client, _ = _build_client(tmp_path, openai_enabled=False)
     with client:
         session_id = client.post("/api/demo/sessions").json()["session_id"]
-        response = client.post(
-            "/api/demo/messages",
-            json={
-                "session_id": session_id,
-                "text": "Мне нужен стол до 70000, рост 185, два монитора, только ноутбук, 140x70",
-            },
-        )
-    assert response.status_code == 200
-    payload = response.json()
+        _post_message(client, session_id, "Мне нужен стол до 70000, рост 185, два монитора, только ноутбук, 140x70")
+        _post_message(client, session_id, "Москва")
+        payload = _post_message(client, session_id, "Да")
     assert payload["assistant_text"]
     assert payload["intent"]
     assert isinstance(payload["recommended_products"], list)
@@ -98,15 +92,9 @@ def test_demo_messages_openai_failure_returns_stable_fallback(tmp_path: Path, mo
             raise RuntimeError("OpenAI upstream timeout: 504 gateway")
 
         monkeypatch.setattr(openai_client, "simple_chat", _raise_provider_error)
-        response = client.post(
-            "/api/demo/messages",
-            json={
-                "session_id": session_id,
-                "text": "рост 185 бюджет 70000 два монитора только ноутбук 140x70",
-            },
-        )
-    assert response.status_code == 200
-    payload = response.json()
+        _post_message(client, session_id, "рост 185 бюджет 70000 два монитора только ноутбук 140x70")
+        _post_message(client, session_id, "Москва")
+        payload = _post_message(client, session_id, "Да")
     assert payload["assistant_text"]
     assert "OpenAI" not in payload["assistant_text"]
     assert "timeout" not in payload["assistant_text"].lower()
@@ -215,7 +203,7 @@ def test_demo_guided_happy_path_buttons_no_loop(tmp_path: Path) -> None:
         r5 = _post_message(client, session_id, "Нет")
         assert r5["lead_state"]["current_step"] == "size"
         r6 = _post_message(client, session_id, "120x60")
-        assert r6["lead_state"]["current_step"] in {"city", "assembly", None}
+        assert r6["lead_state"]["current_step"] == "city"
         known = r6["lead_state"]["known_params"]
         assert known["use_case"] == "home_office"
         assert known["height_cm"] is not None
@@ -235,13 +223,34 @@ def test_demo_guided_happy_path_free_text_no_loop(tmp_path: Path) -> None:
         _post_message(client, session_id, "2")
         _post_message(client, session_id, "нет")
         r = _post_message(client, session_id, "120 см")
-        assert r["lead_state"]["current_step"] in {"city", "assembly", None}
+        assert r["lead_state"]["current_step"] == "city"
         known = r["lead_state"]["known_params"]
         assert known["height_cm"] == 178
         assert known["budget_max"] == 50000
         assert known["monitors_count"] == 2
         assert known["has_pc_case"] is False
         assert known["preferred_width_cm"] == 120
+
+
+def test_demo_guided_happy_path_full_flow_city_assembly(tmp_path: Path) -> None:
+    client, _ = _build_client(tmp_path, openai_enabled=False)
+    with client:
+        session_id = client.post("/api/demo/sessions").json()["session_id"]
+        _post_message(client, session_id, "Для работы дома")
+        _post_message(client, session_id, "176-185 см")
+        _post_message(client, session_id, "50 000-80 000 ₽")
+        _post_message(client, session_id, "2 монитора")
+        _post_message(client, session_id, "Нет")
+        after_size = _post_message(client, session_id, "120x60")
+        assert after_size["lead_state"]["current_step"] == "city"
+        after_city = _post_message(client, session_id, "Москва")
+        assert after_city["lead_state"]["current_step"] == "assembly"
+        after_assembly = _post_message(client, session_id, "Да")
+        assert after_assembly["lead_state"]["current_step"] is None
+        assert after_assembly["recommended_products"]
+        known = after_assembly["lead_state"]["known_params"]
+        assert known["city"] == "Москва"
+        assert known["needs_assembly"] is True
 
 
 def test_demo_lead_flow_requires_required_fields(tmp_path: Path) -> None:
@@ -262,9 +271,77 @@ def test_demo_lead_flow_requires_required_fields(tmp_path: Path) -> None:
         r5 = _post_message(client, session_id, "Москва")
         assert r5["lead_state"]["lead_step"] == "comment"
         r6 = _post_message(client, session_id, "нет")
+        assert r6["lead_state"]["lead_step"] == "done"
         assert r6["lead_state"]["lead_ready"] is True
+        assert r6["lead_state"]["current_step"] == "scenario"
+        assert "Комментарий клиента" not in r6["manager_summary"]
         assert r6["manager_summary"]
         assert "Заявка принята" in r6["assistant_text"]
+
+
+def test_demo_lead_flow_skip_comment_variants_complete(tmp_path: Path) -> None:
+    client, _ = _build_client(tmp_path, openai_enabled=False)
+    skip_values = ("нет", "не знаю", "пропустить", "-")
+    with client:
+        for value in skip_values:
+            session_id = client.post("/api/demo/sessions").json()["session_id"]
+            _post_message(client, session_id, "Позвать менеджера")
+            _post_message(client, session_id, "Иван")
+            _post_message(client, session_id, "+7 999 123 45 67")
+            _post_message(client, session_id, "Москва")
+            final = _post_message(client, session_id, value)
+            assert final["lead_state"]["lead_step"] == "done"
+            assert final["lead_state"]["lead_ready"] is True
+            assert final["manager_summary"]
+            assert "Заявка принята" in final["assistant_text"]
+            assert "Комментарий клиента" not in final["manager_summary"]
+
+
+def test_demo_comment_no_does_not_override_needs_assembly(tmp_path: Path) -> None:
+    client, _ = _build_client(tmp_path, openai_enabled=False)
+    with client:
+        session_id = client.post("/api/demo/sessions").json()["session_id"]
+        _post_message(client, session_id, "Для работы дома")
+        _post_message(client, session_id, "176-185 см")
+        _post_message(client, session_id, "50 000-80 000 ₽")
+        _post_message(client, session_id, "2 монитора")
+        _post_message(client, session_id, "Нет")
+        _post_message(client, session_id, "120x60")
+        _post_message(client, session_id, "Москва")
+        _post_message(client, session_id, "Пока не знаю")
+
+        _post_message(client, session_id, "Позвать менеджера")
+        _post_message(client, session_id, "Иван")
+        _post_message(client, session_id, "+7 999 123 45 67")
+        _post_message(client, session_id, "Москва")
+        final = _post_message(client, session_id, "нет")
+
+        assert final["lead_state"]["known_params"]["needs_assembly"] is False
+
+
+def test_demo_manual_input_button_prompts_without_param_change(tmp_path: Path) -> None:
+    client, _ = _build_client(tmp_path, openai_enabled=False)
+    with client:
+        session_id = client.post("/api/demo/sessions").json()["session_id"]
+        _post_message(client, session_id, "Для работы дома")
+        r_height = _post_message(client, session_id, "Ввести вручную")
+        assert "Введите рост числом, например 178" in r_height["assistant_text"]
+        assert r_height["lead_state"]["current_step"] == "height"
+        assert r_height["lead_state"]["known_params"]["height_cm"] is None
+
+        _post_message(client, session_id, "176-185 см")
+        r_budget = _post_message(client, session_id, "Ввести вручную")
+        assert "Введите бюджет, например 50000 или 50к" in r_budget["assistant_text"]
+        assert r_budget["lead_state"]["current_step"] == "budget"
+        assert r_budget["lead_state"]["known_params"]["budget_max"] is None
+
+        _post_message(client, session_id, "50 000-80 000 ₽")
+        _post_message(client, session_id, "2 монитора")
+        _post_message(client, session_id, "Нет")
+        r_size = _post_message(client, session_id, "Ввести вручную")
+        assert "Введите размер, например 120x60 или 140x70" in r_size["assistant_text"]
+        assert r_size["lead_state"]["current_step"] == "size"
+        assert r_size["lead_state"]["known_params"]["preferred_width_cm"] is None
 
 
 def test_demo_restart_resets_full_context(tmp_path: Path) -> None:

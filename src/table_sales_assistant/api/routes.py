@@ -31,6 +31,7 @@ from table_sales_assistant.assistant.collection import (
     STEP_PC,
     STEP_SCENARIO,
     STEP_SIZE,
+    get_current_collection_step,
 )
 from table_sales_assistant.api.session_store import InMemoryWebSessionStore
 from table_sales_assistant.app_factory import AppServices
@@ -42,20 +43,7 @@ logger = logging.getLogger(__name__)
 
 
 def _current_collection_step(context) -> str | None:
-    kp = context.known_params
-    if kp.use_case is None:
-        return STEP_SCENARIO
-    if kp.height_cm is None and not kp.height_unspecified:
-        return STEP_HEIGHT
-    if kp.budget_max is None and kp.budget_min is None and not kp.budget_unspecified:
-        return STEP_BUDGET
-    if kp.monitors_count is None and not kp.monitors_unspecified:
-        return STEP_MONITORS
-    if kp.has_pc_case is None and not kp.pc_unspecified:
-        return STEP_PC
-    if not kp.no_size_limit and kp.max_width_cm is None and kp.preferred_width_cm is None and not kp.size_unspecified:
-        return STEP_SIZE
-    return None
+    return get_current_collection_step(context.known_params)
 
 
 def _quick_replies(

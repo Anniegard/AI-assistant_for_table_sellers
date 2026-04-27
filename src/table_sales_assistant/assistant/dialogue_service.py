@@ -18,6 +18,7 @@ from table_sales_assistant.assistant.collection import (
     STEP_SIZE,
     STEP_CITY,
     STEP_ASSEMBLY,
+    get_current_collection_step,
 )
 from table_sales_assistant.assistant.free_text_parser import (
     ACTIVE_STEP_BUDGET,
@@ -45,31 +46,6 @@ from table_sales_assistant.catalog.scenario_mapping import catalog_tags_for_scen
 from table_sales_assistant.services.explanation_service import ExplanationService
 from table_sales_assistant.services.faq_service import FAQService
 from table_sales_assistant.services.recommendation_service import RecommendationService
-
-
-def _first_missing_collection_step(kp: KnownClientParams) -> str | None:
-    if kp.use_case is None:
-        return STEP_SCENARIO
-    if kp.height_cm is None and not kp.height_unspecified:
-        return STEP_HEIGHT
-    if (
-        kp.budget_max is None
-        and kp.budget_min is None
-        and not kp.budget_unspecified
-    ):
-        return STEP_BUDGET
-    if kp.monitors_count is None and not kp.monitors_unspecified:
-        return STEP_MONITORS
-    if kp.has_pc_case is None and not kp.pc_unspecified:
-        return STEP_PC
-    if (
-        not kp.no_size_limit
-        and kp.max_width_cm is None
-        and kp.preferred_width_cm is None
-        and not kp.size_unspecified
-    ):
-        return STEP_SIZE
-    return None
 
 
 def _parser_active_step_for_collection(missing: str | None) -> str | None:
@@ -139,7 +115,11 @@ class DialogueService:
         context.lead_comment = None
 
     def _merge_signals_into_params(
-        self, context: DialogueContext, signals: ParsedSignals, raw_text: str
+        self,
+        context: DialogueContext,
+        signals: ParsedSignals,
+        raw_text: str,
+        current_step: str | None,
     ) -> None:
         kp = context.known_params
         if signals.height_cm is not None:
@@ -176,12 +156,13 @@ class DialogueService:
             kp.city = raw_text.strip()
         if "другой город" in raw_lower:
             kp.city = None
-        if raw_lower in ("да", "нужна сборка"):
-            kp.needs_assembly = True
-        elif raw_lower in ("нет", "без сборки"):
-            kp.needs_assembly = False
-        elif raw_lower in ("пока не знаю", "не знаю"):
-            kp.needs_assembly = False
+        if current_step == STEP_ASSEMBLY:
+            if raw_lower in ("да", "нужна сборка"):
+                kp.needs_assembly = True
+            elif raw_lower in ("нет", "без сборки"):
+                kp.needs_assembly = False
+            elif raw_lower in ("пока не знаю", "не знаю"):
+                kp.needs_assembly = False
 
         mapped = LABEL_TO_SCENARIO.get((raw_text or "").strip().lower())
         if mapped is not None:
@@ -189,13 +170,24 @@ class DialogueService:
         elif parse_internal_scenario(raw_text):
             kp.use_case = parse_internal_scenario(raw_text)
 
+    @staticmethod
+    def _manual_input_hint(step: str | None, text: str) -> str | None:
+        if (text or "").strip().lower() != "ввести вручную":
+            return None
+        hints = {
+            STEP_HEIGHT: "Введите рост числом, например 178.",
+            STEP_BUDGET: "Введите бюджет, например 50000 или 50к.",
+            STEP_SIZE: "Введите размер, например 120x60 или 140x70.",
+        }
+        return hints.get(step)
+
     def _apply_dismissal_for_current_step(
         self, context: DialogueContext, text: str, signals: ParsedSignals
     ) -> None:
         if not is_dismissal_reply(text):
             return
         kp = context.known_params
-        missing = _first_missing_collection_step(kp)
+        missing = get_current_collection_step(kp)
         if missing == STEP_SCENARIO and signals.internal_scenario is None:
             kp.use_case = "unknown"
         elif missing == STEP_HEIGHT and signals.height_cm is None:
@@ -227,12 +219,12 @@ class DialogueService:
             kp.use_case = "unknown"
 
     def _update_context_from_text(self, text: str, context: DialogueContext) -> None:
-        missing = _first_missing_collection_step(context.known_params)
+        missing = get_current_collection_step(context.known_params)
         active = _parser_active_step_for_collection(
             missing if context.guide_active and not context.recommended_products else None
         )
         signals = parse_signals(text, active_step=active)
-        self._merge_signals_into_params(context, signals, text)
+        self._merge_signals_into_params(context, signals, text, missing)
         self._apply_dismissal_for_current_step(context, text, signals)
         self._apply_combined_free_text_shortcut(context, text)
         self._apply_partial_params_completion(context, text)
@@ -368,7 +360,7 @@ class DialogueService:
         return params
 
     def _next_collection_prompt(self, context: DialogueContext) -> str | None:
-        step = _first_missing_collection_step(context.known_params)
+        step = get_current_collection_step(context.known_params)
         prompts = {
             STEP_SCENARIO: ASK_SCENARIO_TEXT,
             STEP_HEIGHT: ASK_HEIGHT_STEP_TEXT,
@@ -423,6 +415,10 @@ class DialogueService:
             return kp.has_pc_case is not None or kp.pc_unspecified
         if step == STEP_SIZE:
             return kp.no_size_limit or kp.preferred_width_cm is not None or kp.size_unspecified
+        if step == STEP_CITY:
+            return bool(kp.city)
+        if step == STEP_ASSEMBLY:
+            return kp.needs_assembly is not None
         return True
 
     def _start_lead_flow(self, context: DialogueContext) -> AssistantResponse:
@@ -489,7 +485,7 @@ class DialogueService:
                 intent=DialogueIntent.LEAVE_LEAD,
             )
         if context.lead_step == "comment":
-            if lowered not in {"нет", "не знаю", "пропустить", "-"}:
+            if value and lowered not in {"нет", "не знаю", "пропустить", "-"}:
                 context.lead_comment = value
             context.lead_flow_active = False
             context.lead_step = "done"
@@ -750,7 +746,17 @@ class DialogueService:
         if text.strip():
             context.recent_questions.append(text.strip())
             context.recent_questions = context.recent_questions[-10:]
-        missing_before = _first_missing_collection_step(context.known_params)
+        missing_before = get_current_collection_step(context.known_params)
+        manual_hint = self._manual_input_hint(missing_before, text)
+        if manual_hint is not None:
+            return self._with_history(
+                context,
+                ResponseBuilder.plain(
+                    manual_hint,
+                    goal=AssistantGoal.ASK_MISSING_PARAM,
+                    intent=DialogueIntent.UNKNOWN,
+                ),
+            )
         self._update_context_from_text(text, context)
         intent = self.intent_router.route(text)
         intent = self._post_rec_intent_override(text, intent, context)
@@ -995,7 +1001,7 @@ class DialogueService:
                 DialogueIntent.CLARIFY_RECOMMENDATION,
             )
         ):
-            missing_col = _first_missing_collection_step(context.known_params)
+            missing_col = get_current_collection_step(context.known_params)
             if missing_col is not None:
                 if (
                     missing_before == missing_col
@@ -1062,7 +1068,7 @@ class DialogueService:
                     ),
                 )
 
-            collection_done = _first_missing_collection_step(context.known_params) is None
+            collection_done = get_current_collection_step(context.known_params) is None
             if collection_done or not context.guide_active:
                 rec = self._run_recommendation_block(context, intent)
                 if rec.goal == AssistantGoal.RECOMMEND:

@@ -10,6 +10,7 @@
 - Fixed guided flow predictability: free-text parsing no longer auto-skips monitors/PC/size, so recommendation starts only after explicit answers or explicit skip phrases on those steps.
 - Updated cheaper intent UX: "дешевле" without a budget now asks for a new budget and sets waiting state, while inline/follow-up budget replies recalculate recommendations without restarting the scenario.
 - Expanded regression coverage for guided step order, cheaper follow-up budget flow, parser edge phrases (size/PC/scenario/budget), synced `docs/data_model.md` with actual context model fields, and added manual UX checklist scenarios.
+- Unified guided-step resolver for Web demo FSM so `city -> assembly` is no longer skipped after size, scoped assembly yes/no parsing strictly to the `assembly` step, added explicit `Ввести вручную` prompts for height/budget/size, and hardened API/dialogue tests for full flow and lead comment skip finalization.
 
 ## [0.4.7] - 2026-04-26
 
